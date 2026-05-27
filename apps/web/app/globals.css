@@ -14,6 +14,7 @@
   --destructive-foreground: 0 0% 100%;
   --ring: 215 81% 38%;
   --radius: 0.5rem;
+  --sidebar: 0 0% 99%;
 
   /* Status colours — muted, not traffic-light */
   --status-new: 215 16% 80%;

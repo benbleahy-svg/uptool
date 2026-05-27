@@ -10,6 +10,7 @@ import {
   removeBlockListEntry,
 } from "./actions";
 import { DisconnectButton } from "./disconnect-button";
+import { ForwardingAddressSection } from "./forwarding-address-section";
 
 interface Props {
   params: Promise<{ orgSlug: string }>;
@@ -114,6 +115,17 @@ export default async function EmailAccountsPage({ params, searchParams }: Props)
           </>
         )}
       </section>
+
+      {/* Forwarding address section */}
+      {org.forwardingAddress && (
+        <ForwardingAddressSection
+          address={org.forwardingAddress}
+          title={t("email_accounts.forwarding_title")}
+          subtitle={t("email_accounts.forwarding_subtitle")}
+          copyLabel={t("email_accounts.forwarding_copy")}
+          copiedLabel={t("email_accounts.forwarding_copied")}
+        />
+      )}
 
       {/* Block list section */}
       <section>

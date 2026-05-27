@@ -31,6 +31,7 @@ async function seed() {
         country: "DE",
         localeDefault: "de",
         timezone: "Europe/Berlin",
+        forwardingAddress: "rfq+acme@in.toolup.de",
       })
       .returning();
 

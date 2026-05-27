@@ -26,6 +26,7 @@
     "rfqs": "Anfragen",
     "customers": "Kunden",
     "settings": "Einstellungen",
+    "support": "Support",
     "signout": "Abmelden"
   },
   "dashboard": {
@@ -76,6 +77,10 @@
     "email_accounts": {
       "title": "E-Mail-Konten",
       "subtitle": "Verbinden Sie E-Mail-Konten, um Kundenanfragen automatisch einzulesen.",
+      "forwarding_title": "Weiterleitungsadresse (Backup)",
+      "forwarding_subtitle": "Leiten Sie Anfragen von unbekannten Konten an diese Adresse weiter. ToolUp erkennt den Absender und erstellt automatisch eine Anfrage.",
+      "forwarding_copy": "Kopieren",
+      "forwarding_copied": "Kopiert!",
       "add_microsoft": "Microsoft-Konto verbinden",
       "add_google": "Google-Konto verbinden",
       "connected_since": "Verbunden seit",
@@ -118,11 +123,13 @@
       "send": "Senden"
     },
     "table": {
-      "number": "Nr.",
-      "customer": "Kunde",
-      "subject": "Betreff",
+      "number": "Anfrage",
+      "company": "Unternehmen",
+      "contact": "Kontakt",
+      "parts": "Teile",
       "status": "Status",
-      "received": "Eingegangen",
+      "date_received": "Eingangsdatum",
+      "last_email": "Letzte E-Mail",
       "assignee": "Bearbeiter"
     },
     "status": {
@@ -144,6 +151,9 @@
     "quantity_breaks_hint": "z.B. 1, 10, 100",
     "no_filter_results": "Keine Ergebnisse für diese Filter.",
     "bulk_no_bid": "Kein Angebot",
+    "forwarding_address": "Weiterleitungsadresse",
+    "forwarding_copy_confirm": "Kopiert!",
+    "forwarding_tooltip": "Leiten Sie unbekannte Kundenanfragen an diese Adresse weiter. ToolUp erkennt die Absender-E-Mail und erstellt automatisch eine Anfrage.",
     "bulk_selected": "ausgewählt",
     "new_rfq_subject": "Betreff / Teilbeschreibung",
     "new_rfq_subject_placeholder": "z.B. Halterung Baugruppe",

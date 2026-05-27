@@ -1,7 +1,7 @@
 import { eq, sql } from "drizzle-orm";
 import { db, memberships, orgs, users } from "@uptool/db";
 import type { CreateOrgInput } from "@uptool/shared";
-import { generateSlug, RESERVED_SLUGS } from "@uptool/shared";
+import { generateSlug, RESERVED_SLUGS, BRAND } from "@uptool/shared";
 
 async function findUniqueSlug(base: string): Promise<string> {
   const candidate = generateSlug(base);
@@ -41,6 +41,7 @@ export const orgService = {
           slug,
           country,
           localeDefault: locale,
+          forwardingAddress: `rfq+${slug}@${BRAND.forwardingDomain}`,
         })
         .returning();
 

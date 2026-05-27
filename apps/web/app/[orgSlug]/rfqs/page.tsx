@@ -26,16 +26,16 @@ export default async function RfqsPage({ params }: Props) {
   const rows: RfqRow[] = rfqs.map((r) => ({
     id: r.id,
     rfqNumber: r.rfqNumber,
-    customerName: r.customer?.name ?? r.contact?.email ?? "—",
+    companyName: r.customer?.name ?? "—",
+    contactEmail: r.contact?.email ?? null,
     subject: r.subject ?? null,
     status: r.status,
     receivedAt: r.receivedAt.toISOString(),
+    lastEmailAt: r.lastEmailAt?.toISOString() ?? null,
     assigneeName: r.assignee?.name ?? null,
     assigneeId: r.assigneeId ?? null,
     attachmentCount: r.attachments.length,
   }));
-
-  const userId = session.user.id;
 
   const [tTable, tStatus, tDash, tRfq] = await Promise.all([
     getTranslations("rfqs.table"),
@@ -45,42 +45,37 @@ export default async function RfqsPage({ params }: Props) {
   ]);
 
   return (
-    <div className="flex flex-col h-full gap-4">
-      {/* Toolbar */}
-      <div className="flex items-center justify-between">
-        <h1 className="text-base font-semibold">{tRfq("title")}</h1>
-        <NewRfqButton
-          orgSlug={orgSlug}
-          label={tRfq("new_rfq")}
-          labels={{
-            subject: tRfq("new_rfq_subject"),
-            subjectPlaceholder: tRfq("new_rfq_subject_placeholder"),
-            customerEmail: tRfq("new_rfq_customer_email"),
-            customerName: tRfq("new_rfq_customer_name"),
-            create: tRfq("new_rfq_create"),
-          }}
-        />
-      </div>
-
+    <div className="flex flex-col h-full">
       <RfqTable
         data={rows}
         orgSlug={orgSlug}
-        currentUserId={userId}
+        forwardingAddress={org.forwardingAddress ?? null}
+        onCreateRfq={createManualRfq}
         labels={{
+          title: tRfq("title"),
+          searchPlaceholder: tRfq("search_placeholder"),
+          forwardingAddress: tRfq("forwarding_address"),
+          forwardingCopyConfirm: tRfq("forwarding_copy_confirm"),
+          forwardingTooltip: tRfq("forwarding_tooltip"),
+          newRfq: tRfq("new_rfq"),
           number: tTable("number"),
-          customer: tTable("customer"),
-          subject: tTable("subject"),
+          company: tTable("company"),
+          contact: tTable("contact"),
+          parts: tTable("parts"),
           status: tTable("status"),
-          received: tTable("received"),
+          dateReceived: tTable("date_received"),
+          lastEmail: tTable("last_email"),
           assignee: tTable("assignee"),
           emptyTitle: tDash("title"),
           emptySubtitle: tDash("subtitle"),
-          searchPlaceholder: tRfq("search_placeholder"),
-          filterAllStatuses: tRfq("filter_all_statuses"),
-          filterMine: tRfq("filter_mine"),
           noFilterResults: tRfq("no_filter_results"),
           bulkNoBid: tRfq("bulk_no_bid"),
           bulkSelected: tRfq("bulk_selected"),
+          newRfqSubject: tRfq("new_rfq_subject"),
+          newRfqSubjectPlaceholder: tRfq("new_rfq_subject_placeholder"),
+          newRfqCustomerEmail: tRfq("new_rfq_customer_email"),
+          newRfqCustomerName: tRfq("new_rfq_customer_name"),
+          newRfqCreate: tRfq("new_rfq_create"),
         }}
         statusLabels={{
           new: tStatus("new"),
@@ -93,72 +88,5 @@ export default async function RfqsPage({ params }: Props) {
         }}
       />
     </div>
-  );
-}
-
-function NewRfqButton({
-  orgSlug,
-  label,
-  labels,
-}: {
-  orgSlug: string;
-  label: string;
-  labels: {
-    subject: string;
-    subjectPlaceholder: string;
-    customerEmail: string;
-    customerName: string;
-    create: string;
-  };
-}) {
-  return (
-    <details className="relative group">
-      <summary className="list-none cursor-pointer rounded bg-[hsl(var(--primary))] text-[hsl(var(--primary-foreground))] px-4 py-2 text-sm font-medium hover:opacity-90 inline-flex items-center gap-1">
-        + {label}
-      </summary>
-      <div className="absolute right-0 top-full mt-1 z-10 w-80 rounded-md border border-[hsl(var(--border))] bg-white shadow-md p-4">
-        <form action={createManualRfq} className="space-y-3">
-          <input type="hidden" name="orgSlug" value={orgSlug} />
-          <div>
-            <label htmlFor="new-rfq-subject" className="block text-xs text-[hsl(var(--muted-foreground))] mb-1">
-              {labels.subject}
-            </label>
-            <input
-              id="new-rfq-subject"
-              name="subject"
-              className="w-full rounded border border-[hsl(var(--border))] px-2 py-1.5 text-sm"
-              placeholder={labels.subjectPlaceholder}
-            />
-          </div>
-          <div>
-            <label htmlFor="new-rfq-email" className="block text-xs text-[hsl(var(--muted-foreground))] mb-1">
-              {labels.customerEmail}
-            </label>
-            <input
-              id="new-rfq-email"
-              name="fromEmail"
-              type="email"
-              className="w-full rounded border border-[hsl(var(--border))] px-2 py-1.5 text-sm"
-            />
-          </div>
-          <div>
-            <label htmlFor="new-rfq-name" className="block text-xs text-[hsl(var(--muted-foreground))] mb-1">
-              {labels.customerName}
-            </label>
-            <input
-              id="new-rfq-name"
-              name="fromName"
-              className="w-full rounded border border-[hsl(var(--border))] px-2 py-1.5 text-sm"
-            />
-          </div>
-          <button
-            type="submit"
-            className="w-full rounded bg-[hsl(var(--primary))] text-[hsl(var(--primary-foreground))] px-4 py-2 text-sm font-medium hover:opacity-90"
-          >
-            {labels.create}
-          </button>
-        </form>
-      </div>
-    </details>
   );
 }

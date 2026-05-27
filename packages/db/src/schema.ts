@@ -75,6 +75,7 @@ export const orgs = pgTable("orgs", {
   phone: text("phone"),
   website: text("website"),
   defaultHourlyRateCents: integer("default_hourly_rate_cents").notNull().default(0),
+  forwardingAddress: text("forwarding_address"),
   rfqCounter: integer("rfq_counter").notNull().default(0),
   quoteCounter: integer("quote_counter").notNull().default(0),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
@@ -208,6 +209,8 @@ export const rfqStatusEnum = pgEnum("rfq_status", [
   "no_bid",
 ]);
 
+export const rfqSourceEnum = pgEnum("rfq_source", ["email", "manual", "manual_forward"]);
+
 export const rfqs = pgTable(
   "rfqs",
   {
@@ -222,6 +225,7 @@ export const rfqs = pgTable(
       onDelete: "set null",
     }),
     subject: text("subject"),
+    source: rfqSourceEnum("source").notNull().default("manual"),
     quantityBreaks: integer("quantity_breaks").array().notNull().default([1, 10, 100]),
     status: rfqStatusEnum("status").notNull().default("new"),
     assigneeId: uuid("assignee_id").references(() => users.id, { onDelete: "set null" }),

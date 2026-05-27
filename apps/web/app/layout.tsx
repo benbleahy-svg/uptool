@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Inter, JetBrains_Mono } from "next/font/google";
 import { NextIntlClientProvider } from "next-intl";
 import { getLocale, getMessages } from "next-intl/server";
+import { BRAND } from "@uptool/shared";
 import "./globals.css";
 
 const inter = Inter({
@@ -17,8 +18,8 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Uptool",
-  description: "AI-powered quoting for manufacturing shops",
+  title: BRAND.name,
+  description: BRAND.tagline["en-GB"],
 };
 
 export default async function RootLayout({

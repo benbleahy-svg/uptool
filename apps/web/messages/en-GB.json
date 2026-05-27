@@ -26,6 +26,7 @@
     "rfqs": "RFQs",
     "customers": "Customers",
     "settings": "Settings",
+    "support": "Support",
     "signout": "Sign out"
   },
   "dashboard": {
@@ -76,6 +77,10 @@
     "email_accounts": {
       "title": "Email accounts",
       "subtitle": "Connect email accounts to automatically receive customer RFQs.",
+      "forwarding_title": "Forwarding address (backup)",
+      "forwarding_subtitle": "Forward RFQs from unknown accounts to this address. ToolUp detects the sender and automatically creates an RFQ.",
+      "forwarding_copy": "Copy",
+      "forwarding_copied": "Copied!",
       "add_microsoft": "Connect Microsoft account",
       "add_google": "Connect Google account",
       "connected_since": "Connected since",
@@ -118,11 +123,13 @@
       "send": "Send"
     },
     "table": {
-      "number": "No.",
-      "customer": "Customer",
-      "subject": "Subject",
+      "number": "RFQ",
+      "company": "Company",
+      "contact": "Contact",
+      "parts": "Parts",
       "status": "Status",
-      "received": "Received",
+      "date_received": "Date Received",
+      "last_email": "Last Email",
       "assignee": "Assignee"
     },
     "status": {
@@ -144,6 +151,9 @@
     "quantity_breaks_hint": "e.g. 1, 10, 100",
     "no_filter_results": "No results match your filters.",
     "bulk_no_bid": "No bid",
+    "forwarding_address": "Forwarding address",
+    "forwarding_copy_confirm": "Copied!",
+    "forwarding_tooltip": "Forward unknown customer RFQs to this address. ToolUp detects the sender email and automatically creates an RFQ.",
     "bulk_selected": "selected",
     "new_rfq_subject": "Subject / Part description",
     "new_rfq_subject_placeholder": "e.g. Bracket assembly",
