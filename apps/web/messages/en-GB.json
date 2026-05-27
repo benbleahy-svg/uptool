@@ -1,0 +1,256 @@
+{
+  "auth": {
+    "signin": {
+      "title": "Sign in",
+      "email_label": "Email",
+      "submit": "Send magic link",
+      "google": "Continue with Google",
+      "microsoft": "Continue with Microsoft",
+      "magic_link_sent": "Check your email."
+    },
+    "signup": {
+      "title": "Create your account"
+    },
+    "signout": "Sign out"
+  },
+  "onboarding": {
+    "new_org": {
+      "title": "Set up your shop",
+      "name_label": "Shop name",
+      "country_label": "Country",
+      "locale_label": "Default language",
+      "submit": "Create shop"
+    }
+  },
+  "nav": {
+    "rfqs": "RFQs",
+    "customers": "Customers",
+    "settings": "Settings",
+    "signout": "Sign out"
+  },
+  "dashboard": {
+    "empty": {
+      "title": "No RFQs yet",
+      "subtitle": "When customer RFQs arrive, they'll appear here."
+    }
+  },
+  "common": {
+    "cancel": "Cancel",
+    "save": "Save",
+    "delete": "Delete",
+    "loading": "Loading…"
+  },
+  "errors": {
+    "generic": "Something went wrong.",
+    "unauthorized": "You don't have access to this.",
+    "not_found": "Not found."
+  },
+  "settings": {
+    "shop": {
+      "title": "Shop profile",
+      "subtitle": "Details printed on quotes and visible to customers.",
+      "name": "Shop name",
+      "phone": "Phone",
+      "website": "Website",
+      "vat_id": "VAT ID",
+      "street": "Street",
+      "city": "City",
+      "postal": "Postcode",
+      "country": "Country",
+      "default_rate": "Default hourly rate (€/h)",
+      "save": "Save"
+    },
+    "operation_templates": {
+      "title": "Operation templates",
+      "subtitle": "Reusable templates for common operations.",
+      "add": "Add template",
+      "name": "Name",
+      "type": "Type",
+      "setup": "Setup (min)",
+      "run": "Run (min)",
+      "rate": "Rate (€/h)",
+      "usage": "Used",
+      "empty": "No templates yet.",
+      "delete": "Delete"
+    },
+    "email_accounts": {
+      "title": "Email accounts",
+      "subtitle": "Connect email accounts to automatically receive customer RFQs.",
+      "add_microsoft": "Connect Microsoft account",
+      "add_google": "Connect Google account",
+      "connected_since": "Connected since",
+      "authorized_by": "Authorised by",
+      "disconnect": "Disconnect",
+      "disconnect_confirm": "Are you sure you want to disconnect this account?",
+      "status_connected": "Connected",
+      "status_error": "Error",
+      "no_accounts": "No email accounts connected yet.",
+      "first_check_info": "The first check will happen within a few minutes."
+    },
+    "members": {
+      "title": "Members",
+      "subtitle": "Manage people with access to this shop.",
+      "col_name": "Name",
+      "col_email": "Email",
+      "col_role": "Role",
+      "role_owner": "Owner",
+      "role_estimator": "Estimator",
+      "role_office": "Office",
+      "add_member": "Add member",
+      "add": "Add",
+      "remove": "Remove"
+    },
+    "block_list": {
+      "title": "Block list",
+      "subtitle": "Emails from these addresses or domains will be ignored.",
+      "placeholder": "email or @domain.com",
+      "add": "Add",
+      "empty": "No entries."
+    }
+  },
+  "rfqs": {
+    "title": "RFQs",
+    "new_rfq": "New RFQ",
+    "tabs": {
+      "thread": "Email thread",
+      "estimate": "Estimate",
+      "quote": "Quote",
+      "send": "Send"
+    },
+    "table": {
+      "number": "No.",
+      "customer": "Customer",
+      "subject": "Subject",
+      "status": "Status",
+      "received": "Received",
+      "assignee": "Assignee"
+    },
+    "status": {
+      "new": "New",
+      "estimated": "Estimated",
+      "quoted": "Quoted",
+      "sent": "Sent",
+      "won": "Won",
+      "lost": "Lost",
+      "no_bid": "No bid"
+    },
+    "mark_won": "Mark Won",
+    "mark_no_bid": "No Bid",
+    "mark_lost": "Mark Lost",
+    "search_placeholder": "Search…",
+    "filter_all_statuses": "All statuses",
+    "filter_mine": "Mine",
+    "quantity_breaks": "Quantities",
+    "quantity_breaks_hint": "e.g. 1, 10, 100",
+    "no_filter_results": "No results match your filters.",
+    "bulk_no_bid": "No bid",
+    "bulk_selected": "selected",
+    "new_rfq_subject": "Subject / Part description",
+    "new_rfq_subject_placeholder": "e.g. Bracket assembly",
+    "new_rfq_customer_email": "Customer email",
+    "new_rfq_customer_name": "Customer name",
+    "new_rfq_create": "Create RFQ",
+    "detail": {
+      "back": "Back",
+      "thread": "Email thread",
+      "attachments": "Attachments",
+      "no_attachments": "No attachments",
+      "no_messages": "No messages yet.",
+      "meta_customer": "Customer",
+      "meta_contact": "Contact",
+      "meta_received": "Received",
+      "meta_assignee": "Assignee",
+      "timeline": "Activity",
+      "timeline_received": "RFQ received",
+      "timeline_email_from": "Email from",
+      "timeline_reply_sent": "Reply sent",
+      "timeline_quote_created": "Quote created",
+      "timeline_quote_sent": "Quote sent"
+    }
+  },
+  "customers": {
+    "title": "Customers",
+    "company": "Company",
+    "domain": "Domain",
+    "contacts_count": "Contacts",
+    "open_rfqs": "Open RFQs",
+    "last_rfq": "Last RFQ",
+    "no_customers": "No customers yet.",
+    "contacts_title": "Contacts",
+    "rfq_history": "RFQ history",
+    "add_contact": "Add contact",
+    "contact_name": "Name",
+    "contact_email": "Email"
+  },
+  "thread": {
+    "reply": "Reply",
+    "reply_to": "To",
+    "reply_subject": "Subject",
+    "reply_body": "Message",
+    "send_reply": "Send reply",
+    "attachments_all": "All",
+    "attachments_drawings": "Drawings",
+    "attachments_cad": "CAD",
+    "attachments_bom": "BOM",
+    "attachments_other": "Other"
+  },
+  "estimate": {
+    "no_parts": "No parts yet. Add a part below.",
+    "add_part": "Add part",
+    "part_number": "Part number",
+    "revision": "Revision",
+    "description": "Description",
+    "material": "Material",
+    "finish": "Finish",
+    "material_cost": "Material cost (€/unit)",
+    "operation_name": "Operation",
+    "setup_min": "Setup (min)",
+    "run_min": "Run (min)",
+    "hourly_rate": "Hourly rate",
+    "cost_at_qty": "Cost @ qty {qty}",
+    "total_cost_per_unit": "Total/unit",
+    "delete_part": "Delete part",
+    "add_operation": "Add operation",
+    "add": "Add",
+    "process_type": "Manufacturing process",
+    "operation_type": "Type",
+    "operation_type_machining": "Machining",
+    "operation_type_expense": "Expense",
+    "notes_external": "External Notes",
+    "notes_external_hint": "Printed on quote",
+    "notes_internal": "Internal Notes",
+    "notes_internal_hint": "Traveler only",
+    "copy_ops_from": "Copy operations from…",
+    "copy": "Copy",
+    "pick_template": "Pick template",
+    "template_recently_used": "Recently used",
+    "template_all": "All",
+    "template_manual": "— Enter manually —",
+    "no_templates": "No templates. Add one in Settings."
+  },
+  "quote": {
+    "part": "Part",
+    "qty": "Qty",
+    "cost_per_unit": "Cost/unit",
+    "markup_pct": "Markup %",
+    "quote_price": "Quote price",
+    "lead_time_weeks": "Lead time (wks)",
+    "no_bid": "No bid",
+    "notes_for_customer": "Notes for customer",
+    "create": "Create quote",
+    "update": "Update quote",
+    "download_pdf": "Download PDF",
+    "go_to_send": "Go to send",
+    "show_cost": "Show cost & markup",
+    "hide_cost": "Hide cost & markup",
+    "no_quote": "No parts yet. Please create an estimate first."
+  },
+  "send": {
+    "to": "To",
+    "subject": "Subject",
+    "body": "Message",
+    "send_quote": "Send quote",
+    "sent_at": "Sent on {date}",
+    "no_quote_to_send": "No quote to send."
+  }
+}

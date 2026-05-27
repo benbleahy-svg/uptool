@@ -1,0 +1,26 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022"],
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true,
+    "skipLibCheck": true,
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+    "paths": {
+      "@uptool/db": ["../../packages/db/src/index.ts"],
+      "@uptool/db/*": ["../../packages/db/src/*.ts"],
+      "@uptool/shared": ["../../packages/shared/src/index.ts"],
+      "@uptool/shared/*": ["../../packages/shared/src/*.ts"],
+      "@uptool/services": ["../../packages/services/src/index.ts"],
+      "@uptool/services/*": ["../../packages/services/src/*.ts"],
+      "@uptool/ui": ["../../packages/ui/src/index.ts"],
+      "@uptool/ui/*": ["../../packages/ui/src/*.ts"]
+    }
+  }
+}

@@ -1,0 +1,71 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  ci:
+    name: Typecheck / Lint / Test
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Get pnpm store directory
+        id: pnpm-cache
+        run: echo "STORE_PATH=$(pnpm store path)" >> $GITHUB_OUTPUT
+
+      - uses: actions/cache@v4
+        with:
+          path: ${{ steps.pnpm-cache.outputs.STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: ${{ runner.os }}-pnpm-
+
+      - uses: actions/cache@v4
+        with:
+          path: .turbo
+          key: ${{ runner.os }}-turbo-${{ github.sha }}
+          restore-keys: ${{ runner.os }}-turbo-
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Test
+        run: pnpm test
+
+      - name: Check services layer — no framework imports
+        run: |
+          if grep -r "from ['\"]next/" packages/services/src/ 2>/dev/null; then
+            echo "ERROR: packages/services/ must not import from next/*"
+            exit 1
+          fi
+          if grep -r "from ['\"]next-auth/" packages/services/src/ 2>/dev/null; then
+            echo "ERROR: packages/services/ must not import from next-auth/*"
+            exit 1
+          fi
+          if grep -r "from ['\"]react\"" packages/services/src/ 2>/dev/null; then
+            echo "ERROR: packages/services/ must not import from react"
+            exit 1
+          fi
+          echo "Services layer clean — no forbidden imports found"
+
+      - name: Check Drizzle migrations up to date
+        run: pnpm --filter @uptool/db db:generate --check
+        continue-on-error: true

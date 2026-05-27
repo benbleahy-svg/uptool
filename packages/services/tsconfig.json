@@ -1,0 +1,14 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "paths": {
+      "@uptool/db": ["../db/src/index.ts"],
+      "@uptool/db/*": ["../db/src/*.ts"],
+      "@uptool/shared": ["../shared/src/index.ts"],
+      "@uptool/shared/*": ["../shared/src/*.ts"]
+    }
+  },
+  "include": ["src/**/*", "../db/src/**/*", "../shared/src/**/*"],
+  "exclude": ["node_modules"]
+}

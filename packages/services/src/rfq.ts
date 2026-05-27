@@ -1,0 +1,252 @@
+import { attachments, auditLog, db, emailMessages, emailThreads, orgs, rfqs } from "@uptool/db";
+import { isManufacturingFile } from "@uptool/shared";
+import { and, eq, inArray, sql } from "drizzle-orm";
+import { customerService } from "./customer";
+import { storageService } from "./storage";
+import { withOrgContext } from "@uptool/db";
+
+export interface CreateRfqFromEmailInput {
+  orgId: string;
+  emailAccountId: string;
+  provider: "microsoft" | "gmail";
+  providerThreadId: string;
+  providerMessageId: string;
+  fromEmail: string;
+  fromName?: string;
+  toEmails: string[];
+  subject?: string;
+  bodyText?: string;
+  receivedAt: Date;
+  attachmentFiles: Array<{
+    filename: string;
+    contentType: string;
+    sizeBytes: number;
+    data: Buffer;
+  }>;
+}
+
+export const rfqService = {
+  async createFromEmail(input: CreateRfqFromEmailInput) {
+    return withOrgContext(input.orgId, async (tx) => {
+      // Increment RFQ counter atomically
+      const [updated] = await tx
+        .update(orgs)
+        .set({ rfqCounter: sql`rfq_counter + 1` })
+        .where(eq(orgs.id, input.orgId))
+        .returning({ rfqCounter: orgs.rfqCounter });
+
+      const rfqNumber = updated?.rfqCounter;
+      if (!rfqNumber) throw new Error("Failed to increment RFQ counter");
+
+      // Resolve customer/contact
+      const { customerId, contactId } = await customerService.findOrCreate(
+        tx as typeof db,
+        input.orgId,
+        input.fromEmail,
+        input.fromName,
+      );
+
+      // Create RFQ
+      const [rfq] = await tx
+        .insert(rfqs)
+        .values({
+          orgId: input.orgId,
+          rfqNumber,
+          customerId,
+          contactId,
+          emailAccountId: input.emailAccountId,
+          subject: input.subject,
+          status: "new",
+          receivedAt: input.receivedAt,
+          lastEmailAt: input.receivedAt,
+        })
+        .returning();
+
+      if (!rfq) throw new Error("Failed to create RFQ");
+
+      // Create email thread
+      const [thread] = await tx
+        .insert(emailThreads)
+        .values({
+          orgId: input.orgId,
+          rfqId: rfq.id,
+          providerThreadId: input.providerThreadId,
+          provider: input.provider,
+        })
+        .returning();
+
+      if (!thread) throw new Error("Failed to create email thread");
+
+      // Create email message
+      const [message] = await tx
+        .insert(emailMessages)
+        .values({
+          orgId: input.orgId,
+          threadId: thread.id,
+          providerMessageId: input.providerMessageId,
+          direction: "inbound",
+          fromEmail: input.fromEmail,
+          fromName: input.fromName,
+          toEmails: input.toEmails,
+          subject: input.subject,
+          bodyText: input.bodyText,
+          receivedAt: input.receivedAt,
+        })
+        .returning();
+
+      if (!message) throw new Error("Failed to create email message");
+
+      // Upload attachments to S3 and record in DB
+      for (const file of input.attachmentFiles) {
+        if (!isManufacturingFile(file.filename)) continue;
+        const storageKey = `${input.orgId}/${rfq.id}/${file.filename}`;
+        await storageService.upload(storageKey, file.data, file.contentType);
+        await tx.insert(attachments).values({
+          orgId: input.orgId,
+          rfqId: rfq.id,
+          messageId: message.id,
+          filename: file.filename,
+          contentType: file.contentType,
+          sizeBytes: file.sizeBytes,
+          storageKey,
+        });
+      }
+
+      // Audit log
+      await tx.insert(auditLog).values({
+        orgId: input.orgId,
+        entity: "rfq",
+        entityId: rfq.id,
+        action: "created",
+      });
+
+      return rfq;
+    });
+  },
+
+  async addMessageToThread(input: {
+    orgId: string;
+    threadId: string;
+    rfqId: string;
+    providerMessageId: string;
+    fromEmail: string;
+    fromName?: string;
+    toEmails: string[];
+    subject?: string;
+    bodyText?: string;
+    receivedAt: Date;
+  }) {
+    return withOrgContext(input.orgId, async (tx) => {
+      const [message] = await tx
+        .insert(emailMessages)
+        .values({
+          orgId: input.orgId,
+          threadId: input.threadId,
+          providerMessageId: input.providerMessageId,
+          direction: "inbound",
+          fromEmail: input.fromEmail,
+          fromName: input.fromName,
+          toEmails: input.toEmails,
+          subject: input.subject,
+          bodyText: input.bodyText,
+          receivedAt: input.receivedAt,
+        })
+        .returning();
+
+      await tx
+        .update(rfqs)
+        .set({ lastEmailAt: input.receivedAt, updatedAt: new Date() })
+        .where(and(eq(rfqs.id, input.rfqId), eq(rfqs.orgId, input.orgId)));
+
+      return message;
+    });
+  },
+
+  async findByOrg(orgId: string) {
+    return withOrgContext(orgId, async (tx) => {
+      return tx.query.rfqs.findMany({
+        where: (r, { eq }) => eq(r.orgId, orgId),
+        with: {
+          customer: true,
+          contact: true,
+          assignee: true,
+          attachments: true,
+        },
+        orderBy: (r, { desc }) => [desc(r.receivedAt)],
+        limit: 50,
+      });
+    });
+  },
+
+  async findById(orgId: string, rfqId: string) {
+    return withOrgContext(orgId, async (tx) => {
+      return tx.query.rfqs.findFirst({
+        where: (r, { and, eq }) => and(eq(r.orgId, orgId), eq(r.id, rfqId)),
+        with: {
+          customer: true,
+          contact: true,
+          assignee: true,
+          emailAccount: true,
+          attachments: true,
+          threads: {
+            with: {
+              messages: {
+                orderBy: (m, { asc }) => [asc(m.receivedAt)],
+              },
+            },
+          },
+        },
+      });
+    });
+  },
+
+  async updateAssignee(orgId: string, rfqId: string, assigneeId: string | null) {
+    return withOrgContext(orgId, async (tx) => {
+      await tx
+        .update(rfqs)
+        .set({ assigneeId, updatedAt: new Date() })
+        .where(and(eq(rfqs.id, rfqId), eq(rfqs.orgId, orgId)));
+    });
+  },
+
+  async updateQuantityBreaks(orgId: string, rfqId: string, quantities: number[]) {
+    return withOrgContext(orgId, async (tx) => {
+      await tx
+        .update(rfqs)
+        .set({ quantityBreaks: quantities, updatedAt: new Date() })
+        .where(and(eq(rfqs.id, rfqId), eq(rfqs.orgId, orgId)));
+    });
+  },
+
+  async updateStatus(
+    orgId: string,
+    rfqId: string,
+    status: "new" | "estimated" | "quoted" | "sent" | "won" | "lost" | "no_bid",
+  ) {
+    return withOrgContext(orgId, async (tx) => {
+      await tx
+        .update(rfqs)
+        .set({ status, updatedAt: new Date() })
+        .where(and(eq(rfqs.id, rfqId), eq(rfqs.orgId, orgId)));
+    });
+  },
+
+  async advanceToEstimated(orgId: string, rfqId: string) {
+    await db
+      .update(rfqs)
+      .set({ status: "estimated", updatedAt: new Date() })
+      .where(and(eq(rfqs.id, rfqId), eq(rfqs.orgId, orgId), eq(rfqs.status, "new")));
+  },
+
+  async bulkUpdateStatus(
+    orgId: string,
+    rfqIds: string[],
+    status: "new" | "estimated" | "quoted" | "sent" | "won" | "lost" | "no_bid",
+  ) {
+    if (rfqIds.length === 0) return;
+    await db
+      .update(rfqs)
+      .set({ status, updatedAt: new Date() })
+      .where(and(eq(rfqs.orgId, orgId), inArray(rfqs.id, rfqIds)));
+  },
+};

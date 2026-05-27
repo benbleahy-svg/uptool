@@ -1,0 +1,16 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "dist",
+    "paths": {
+      "@uptool/db": ["../../packages/db/src/index.ts"],
+      "@uptool/db/*": ["../../packages/db/src/*.ts"],
+      "@uptool/shared": ["../../packages/shared/src/index.ts"],
+      "@uptool/shared/*": ["../../packages/shared/src/*.ts"],
+      "@uptool/services": ["../../packages/services/src/index.ts"],
+      "@uptool/services/*": ["../../packages/services/src/*.ts"]
+    }
+  },
+  "include": ["src/**/*"],
+  "exclude": ["node_modules", "dist"]
+}

@@ -1,0 +1,256 @@
+{
+  "auth": {
+    "signin": {
+      "title": "Anmelden",
+      "email_label": "E-Mail",
+      "submit": "Magischen Link senden",
+      "google": "Mit Google fortfahren",
+      "microsoft": "Mit Microsoft fortfahren",
+      "magic_link_sent": "Bitte prüfen Sie Ihre E-Mails."
+    },
+    "signup": {
+      "title": "Konto erstellen"
+    },
+    "signout": "Abmelden"
+  },
+  "onboarding": {
+    "new_org": {
+      "title": "Werkstatt einrichten",
+      "name_label": "Werkstattname",
+      "country_label": "Land",
+      "locale_label": "Standardsprache",
+      "submit": "Werkstatt erstellen"
+    }
+  },
+  "nav": {
+    "rfqs": "Anfragen",
+    "customers": "Kunden",
+    "settings": "Einstellungen",
+    "signout": "Abmelden"
+  },
+  "dashboard": {
+    "empty": {
+      "title": "Noch keine Anfragen",
+      "subtitle": "Wenn Anfragen von Kunden eingehen, erscheinen sie hier."
+    }
+  },
+  "common": {
+    "cancel": "Abbrechen",
+    "save": "Speichern",
+    "delete": "Löschen",
+    "loading": "Wird geladen…"
+  },
+  "errors": {
+    "generic": "Etwas ist schiefgegangen.",
+    "unauthorized": "Sie haben keinen Zugriff darauf.",
+    "not_found": "Nicht gefunden."
+  },
+  "settings": {
+    "shop": {
+      "title": "Shop-Profil",
+      "subtitle": "Angaben, die auf Angeboten erscheinen und für Kunden sichtbar sind.",
+      "name": "Werkstattname",
+      "phone": "Telefon",
+      "website": "Website",
+      "vat_id": "USt-IdNr.",
+      "street": "Straße",
+      "city": "Stadt",
+      "postal": "PLZ",
+      "country": "Land",
+      "default_rate": "Standard-Stundensatz (€/h)",
+      "save": "Speichern"
+    },
+    "operation_templates": {
+      "title": "Arbeitsgangvorlagen",
+      "subtitle": "Wiederverwendbare Vorlagen für häufige Arbeitsgänge.",
+      "add": "Vorlage hinzufügen",
+      "name": "Name",
+      "type": "Typ",
+      "setup": "Rüstzeit (min)",
+      "run": "Laufzeit (min)",
+      "rate": "Stundensatz (€/h)",
+      "usage": "Verwendet",
+      "empty": "Noch keine Vorlagen.",
+      "delete": "Löschen"
+    },
+    "email_accounts": {
+      "title": "E-Mail-Konten",
+      "subtitle": "Verbinden Sie E-Mail-Konten, um Kundenanfragen automatisch einzulesen.",
+      "add_microsoft": "Microsoft-Konto verbinden",
+      "add_google": "Google-Konto verbinden",
+      "connected_since": "Verbunden seit",
+      "authorized_by": "Autorisiert von",
+      "disconnect": "Trennen",
+      "disconnect_confirm": "Möchten Sie dieses Konto wirklich trennen?",
+      "status_connected": "Verbunden",
+      "status_error": "Fehler",
+      "no_accounts": "Noch keine E-Mail-Konten verbunden.",
+      "first_check_info": "Die erste Prüfung erfolgt innerhalb weniger Minuten."
+    },
+    "members": {
+      "title": "Mitglieder",
+      "subtitle": "Personen mit Zugang zu dieser Werkstatt verwalten.",
+      "col_name": "Name",
+      "col_email": "E-Mail",
+      "col_role": "Rolle",
+      "role_owner": "Inhaber",
+      "role_estimator": "Kalkulator",
+      "role_office": "Büro",
+      "add_member": "Mitglied hinzufügen",
+      "add": "Hinzufügen",
+      "remove": "Entfernen"
+    },
+    "block_list": {
+      "title": "Blockliste",
+      "subtitle": "E-Mails von diesen Adressen oder Domains werden ignoriert.",
+      "placeholder": "E-Mail oder @domain.com",
+      "add": "Hinzufügen",
+      "empty": "Keine Einträge."
+    }
+  },
+  "rfqs": {
+    "title": "Anfragen",
+    "new_rfq": "Neue Anfrage",
+    "tabs": {
+      "thread": "E-Mail-Verlauf",
+      "estimate": "Kalkulation",
+      "quote": "Angebot",
+      "send": "Senden"
+    },
+    "table": {
+      "number": "Nr.",
+      "customer": "Kunde",
+      "subject": "Betreff",
+      "status": "Status",
+      "received": "Eingegangen",
+      "assignee": "Bearbeiter"
+    },
+    "status": {
+      "new": "Neu",
+      "estimated": "Kalkuliert",
+      "quoted": "Angeboten",
+      "sent": "Gesendet",
+      "won": "Gewonnen",
+      "lost": "Verloren",
+      "no_bid": "Kein Angebot"
+    },
+    "mark_won": "Gewonnen",
+    "mark_no_bid": "Kein Angebot",
+    "mark_lost": "Verloren",
+    "search_placeholder": "Suchen…",
+    "filter_all_statuses": "Alle Status",
+    "filter_mine": "Meine",
+    "quantity_breaks": "Mengen",
+    "quantity_breaks_hint": "z.B. 1, 10, 100",
+    "no_filter_results": "Keine Ergebnisse für diese Filter.",
+    "bulk_no_bid": "Kein Angebot",
+    "bulk_selected": "ausgewählt",
+    "new_rfq_subject": "Betreff / Teilbeschreibung",
+    "new_rfq_subject_placeholder": "z.B. Halterung Baugruppe",
+    "new_rfq_customer_email": "Kunden-E-Mail",
+    "new_rfq_customer_name": "Kundenname",
+    "new_rfq_create": "Anfrage erstellen",
+    "detail": {
+      "back": "Zurück",
+      "thread": "E-Mail-Verlauf",
+      "attachments": "Anhänge",
+      "no_attachments": "Keine Anhänge",
+      "no_messages": "Noch keine Nachrichten.",
+      "meta_customer": "Kunde",
+      "meta_contact": "Kontakt",
+      "meta_received": "Eingegangen",
+      "meta_assignee": "Bearbeiter",
+      "timeline": "Verlauf",
+      "timeline_received": "Anfrage eingegangen",
+      "timeline_email_from": "E-Mail von",
+      "timeline_reply_sent": "Antwort gesendet",
+      "timeline_quote_created": "Angebot erstellt",
+      "timeline_quote_sent": "Angebot gesendet"
+    }
+  },
+  "customers": {
+    "title": "Kunden",
+    "company": "Unternehmen",
+    "domain": "Domain",
+    "contacts_count": "Kontakte",
+    "open_rfqs": "Offene Anfragen",
+    "last_rfq": "Letzte Anfrage",
+    "no_customers": "Noch keine Kunden.",
+    "contacts_title": "Kontakte",
+    "rfq_history": "Anfragehistorie",
+    "add_contact": "Kontakt hinzufügen",
+    "contact_name": "Name",
+    "contact_email": "E-Mail"
+  },
+  "thread": {
+    "reply": "Antworten",
+    "reply_to": "An",
+    "reply_subject": "Betreff",
+    "reply_body": "Nachricht",
+    "send_reply": "Antwort senden",
+    "attachments_all": "Alle",
+    "attachments_drawings": "Zeichnungen",
+    "attachments_cad": "CAD",
+    "attachments_bom": "Stückliste",
+    "attachments_other": "Sonstige"
+  },
+  "estimate": {
+    "no_parts": "Noch keine Teile. Fügen Sie unten ein Teil hinzu.",
+    "add_part": "Teil hinzufügen",
+    "part_number": "Teilenummer",
+    "revision": "Version",
+    "description": "Beschreibung",
+    "material": "Material",
+    "finish": "Oberfläche",
+    "material_cost": "Materialkosten (€/Stk)",
+    "operation_name": "Arbeitsgang",
+    "setup_min": "Rüstzeit (min)",
+    "run_min": "Laufzeit (min)",
+    "hourly_rate": "Stundensatz",
+    "cost_at_qty": "Kosten @ {qty} Stk",
+    "total_cost_per_unit": "Gesamt/Stk",
+    "delete_part": "Teil löschen",
+    "add_operation": "Arbeitsgang hinzufügen",
+    "add": "Hinzufügen",
+    "process_type": "Fertigungsverfahren",
+    "operation_type": "Typ",
+    "operation_type_machining": "Bearbeitung",
+    "operation_type_expense": "Fremdkosten",
+    "notes_external": "Externe Notizen",
+    "notes_external_hint": "Wird auf Angebot gedruckt",
+    "notes_internal": "Interne Notizen",
+    "notes_internal_hint": "Nur für Fertigung",
+    "copy_ops_from": "Arbeitsgänge kopieren aus…",
+    "copy": "Kopieren",
+    "pick_template": "Vorlage wählen",
+    "template_recently_used": "Zuletzt verwendet",
+    "template_all": "Alle",
+    "template_manual": "— Manuell eingeben —",
+    "no_templates": "Keine Vorlagen. Unter Einstellungen anlegen."
+  },
+  "quote": {
+    "part": "Teil",
+    "qty": "Menge",
+    "cost_per_unit": "Kosten/Stk",
+    "markup_pct": "Aufschlag %",
+    "quote_price": "Angebotspreis",
+    "lead_time_weeks": "Lieferzeit (Wo.)",
+    "no_bid": "Kein Angebot",
+    "notes_for_customer": "Hinweise für Kunden",
+    "create": "Angebot erstellen",
+    "update": "Angebot aktualisieren",
+    "download_pdf": "PDF herunterladen",
+    "go_to_send": "Weiter zu Senden",
+    "show_cost": "Kosten & Aufschlag anzeigen",
+    "hide_cost": "Kosten & Aufschlag ausblenden",
+    "no_quote": "Noch keine Teile. Bitte zuerst eine Kalkulation erstellen."
+  },
+  "send": {
+    "to": "An",
+    "subject": "Betreff",
+    "body": "Nachricht",
+    "send_quote": "Angebot senden",
+    "sent_at": "Gesendet am {date}",
+    "no_quote_to_send": "Kein Angebot zum Senden vorhanden."
+  }
+}

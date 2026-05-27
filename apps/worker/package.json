@@ -1,0 +1,26 @@
+{
+  "name": "@uptool/worker",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@uptool/db": "workspace:*",
+    "@uptool/services": "workspace:*",
+    "@uptool/shared": "workspace:*",
+    "@sentry/node": "^8.47.0",
+    "bullmq": "^5.34.5",
+    "pino": "^9.6.0",
+    "pino-pretty": "^13.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.1",
+    "tsx": "^4.19.2",
+    "typescript": "~5.7.3"
+  }
+}

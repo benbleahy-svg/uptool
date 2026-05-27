@@ -1,0 +1,27 @@
+{
+  "name": "uptool",
+  "private": true,
+  "scripts": {
+    "dev": "turbo dev",
+    "build": "turbo build",
+    "typecheck": "turbo typecheck",
+    "lint": "biome lint .",
+    "format": "biome format . --write",
+    "test": "turbo test",
+    "db:migrate": "pnpm --filter @uptool/db db:migrate",
+    "db:seed": "pnpm --filter @uptool/db db:seed",
+    "db:studio": "pnpm --filter @uptool/db db:studio",
+    "clean": "find . -name '.next' -not -path '*/node_modules/*' -exec rm -rf {} + ; find . -name '.turbo' -not -path '*/node_modules/*' -exec rm -rf {} + ; find . -name 'dist' -not -path '*/node_modules/*' -exec rm -rf {} + ; echo 'Build caches cleared.'",
+    "fresh": "pnpm clean && pnpm install && pnpm dev"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^1.9.4",
+    "turbo": "^2.3.3",
+    "typescript": "~5.7.3"
+  },
+  "engines": {
+    "node": ">=22",
+    "pnpm": ">=9"
+  },
+  "packageManager": "pnpm@9.15.0"
+}

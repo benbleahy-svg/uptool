@@ -1,0 +1,25 @@
+{
+  "name": "@uptool/services",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.1054.0",
+    "@aws-sdk/s3-request-presigner": "^3.1054.0",
+    "@microsoft/microsoft-graph-client": "^3.0.7",
+    "@uptool/db": "workspace:*",
+    "@uptool/shared": "workspace:*",
+    "drizzle-orm": "^0.39.1",
+    "googleapis": "^172.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.1",
+    "typescript": "~5.7.3"
+  }
+}

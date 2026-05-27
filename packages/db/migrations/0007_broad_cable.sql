@@ -1,0 +1,1 @@
+ALTER TABLE "rfqs" ADD COLUMN "quantity_breaks" integer[] DEFAULT '{1,10,100}' NOT NULL;
