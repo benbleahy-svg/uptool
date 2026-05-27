@@ -69,9 +69,11 @@ function StatusPill({ status, label }: { status: RfqRow["status"]; label: string
 
   if (fill === "closed") {
     return (
-      <span className="inline-flex items-center rounded-full border border-[hsl(214_32%_91%)] px-2 py-0.5 text-xs text-[hsl(var(--muted-foreground))]">
-        {label}
-      </span>
+      <div className="flex flex-col items-center">
+        <span className="inline-flex items-center rounded-full border border-[hsl(214_32%_91%)] px-2 py-0.5 text-xs text-[hsl(var(--muted-foreground))]">
+          {label}
+        </span>
+      </div>
     );
   }
 
@@ -80,7 +82,7 @@ function StatusPill({ status, label }: { status: RfqRow["status"]; label: string
   const emptyColor = "bg-[hsl(214_32%_91%)]";
 
   return (
-    <div className="flex flex-col items-start gap-1">
+    <div className="flex flex-col items-center gap-1">
       <div className="flex gap-0.5">
         {[0, 1, 2].map((i) => (
           <span
@@ -385,6 +387,7 @@ export function RfqTable({
           {info.getValue()}
         </span>
       ),
+      size: 180,
     }),
     columnHelper.display({
       id: "contact",
@@ -398,11 +401,12 @@ export function RfqTable({
           </span>
         );
       },
+      size: 200,
     }),
     columnHelper.accessor("partCount", {
       header: labels.parts,
       cell: (info) => <PartsCell count={info.getValue()} />,
-      size: 120,
+      size: 240,
     }),
     columnHelper.accessor("status", {
       header: labels.status,
@@ -418,7 +422,7 @@ export function RfqTable({
           {formatSmartDate(info.getValue(), locale, dateLabels)}
         </span>
       ),
-      size: 140,
+      size: 120,
     }),
     columnHelper.accessor("lastEmailAt", {
       header: labels.lastEmail,
@@ -453,7 +457,7 @@ export function RfqTable({
           }}
         />
       ),
-      size: 180,
+      size: 200,
     }),
     columnHelper.display({
       id: "actions",
@@ -470,7 +474,7 @@ export function RfqTable({
           }}
         />
       ),
-      size: 48,
+      size: 40,
     }),
   ];
 
@@ -484,7 +488,8 @@ export function RfqTable({
   });
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col h-full bg-[hsl(210_20%_95%)] p-4">
+      <div className="flex flex-col flex-1 min-h-0 bg-white rounded-lg border border-[hsl(var(--border))] shadow-sm overflow-hidden">
       {/* Top bar */}
       <div className="flex h-16 items-center gap-4 px-6 border-b border-[hsl(var(--border))] flex-shrink-0">
         <OrgLogo name={orgName} url={orgLogoUrl} />
@@ -608,7 +613,7 @@ export function RfqTable({
             </p>
           </div>
         ) : (
-          <table className="w-full text-sm">
+          <table className="w-full text-sm table-fixed">
             <thead className="border-b border-[hsl(var(--border))] bg-[hsl(0_0%_99%)] sticky top-0">
               {table.getHeaderGroups().map((headerGroup) => (
                 <tr key={headerGroup.id}>
@@ -616,7 +621,7 @@ export function RfqTable({
                     <th
                       key={header.id}
                       className={TH}
-                      style={{ width: header.getSize() !== 150 ? header.getSize() : undefined }}
+                      style={{ width: header.getSize() }}
                       onClick={header.column.getToggleSortingHandler()}
                       onKeyDown={(e) => {
                         if (e.key === "Enter" || e.key === " ")
@@ -666,6 +671,7 @@ export function RfqTable({
             </tbody>
           </table>
         )}
+      </div>
       </div>
     </div>
   );
