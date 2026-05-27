@@ -3,6 +3,7 @@ export { userService } from "./user";
 export { storageService } from "./storage";
 export { emailAccountService } from "./email-account";
 export { customerService } from "./customer";
+export type { CustomerSource } from "./customer";
 export { rfqService } from "./rfq";
 export { blockListService } from "./block-list";
 export { emailIngestService } from "./email-ingest";

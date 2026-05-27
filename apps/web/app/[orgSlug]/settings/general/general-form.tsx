@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState, useTransition, useRef } from "react";
 
 const INPUT =
   "w-full rounded-[6px] border border-[hsl(214_32%_91%)] bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[hsl(var(--ring))] placeholder:text-[hsl(var(--muted-foreground))] placeholder:opacity-60";
@@ -34,6 +34,7 @@ interface Initial {
   city: string;
   country: "DE" | "AT" | "CH";
   defaultRateEuros: string;
+  logoUrl: string | null;
 }
 
 interface Labels {
@@ -56,6 +57,10 @@ interface Labels {
   countryCh: string;
   defaultRate: string;
   save: string;
+  logo: string;
+  logoHint: string;
+  logoUpload: string;
+  logoRemove: string;
 }
 
 interface Props {
@@ -63,13 +68,46 @@ interface Props {
   initial: Initial;
   labels: Labels;
   onSave: (fd: FormData) => Promise<void>;
+  onUploadLogo: (fd: FormData) => Promise<void>;
+  onRemoveLogo: (fd: FormData) => Promise<void>;
 }
 
-export function GeneralForm({ orgSlug, initial, labels, onSave }: Props) {
+export function GeneralForm({ orgSlug, initial, labels, onSave, onUploadLogo, onRemoveLogo }: Props) {
   const [isDirty, setIsDirty] = useState(false);
   const [isPending, startTransition] = useTransition();
+  const [logoUploading, startLogoTransition] = useTransition();
+  const [logoUrl, setLogoUrl] = useState<string | null>(initial.logoUrl);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const markDirty = () => setIsDirty(true);
+
+  function handleLogoChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const MAX_BYTES = 1024 * 1024;
+    if (file.size > MAX_BYTES) return;
+    const allowed = ["image/png", "image/jpeg", "image/svg+xml"];
+    if (!allowed.includes(file.type)) return;
+
+    const fd = new FormData();
+    fd.set("orgSlug", orgSlug);
+    fd.set("logo", file);
+    startLogoTransition(() =>
+      onUploadLogo(fd).then(() => setLogoUrl(URL.createObjectURL(file))),
+    );
+  }
+
+  function handleRemoveLogo() {
+    const fd = new FormData();
+    fd.set("orgSlug", orgSlug);
+    startLogoTransition(() =>
+      onRemoveLogo(fd).then(() => {
+        setLogoUrl(null);
+        if (fileInputRef.current) fileInputRef.current.value = "";
+      }),
+    );
+  }
 
   function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -86,6 +124,57 @@ export function GeneralForm({ orgSlug, initial, labels, onSave }: Props) {
       <div className="mb-8">
         <h1 className="text-2xl font-semibold">{labels.title}</h1>
         <p className="mt-1 text-sm text-[hsl(var(--muted-foreground))]">{labels.subtitle}</p>
+      </div>
+
+      {/* Logo upload — separate from main form */}
+      <div className="mb-8 pb-8 border-b border-[hsl(var(--border))]">
+        <label htmlFor="logo-upload" className="block text-sm font-medium mb-1.5">{labels.logo}</label>
+        <div className="flex items-center gap-4">
+          {logoUrl ? (
+            <img
+              src={logoUrl}
+              alt="logo"
+              className="h-16 w-16 rounded-md object-contain border border-[hsl(var(--border))]"
+            />
+          ) : (
+            <div className="h-16 w-16 rounded-md bg-[hsl(var(--primary))] flex items-center justify-center shrink-0 select-none">
+              <span className="text-xl font-semibold text-[hsl(var(--primary-foreground))]">
+                {initial.name[0]?.toUpperCase() ?? "?"}
+              </span>
+            </div>
+          )}
+          <div className="flex flex-col gap-2">
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                disabled={logoUploading}
+                onClick={() => fileInputRef.current?.click()}
+                className="rounded-md border border-[hsl(var(--border))] px-3 py-1.5 text-sm hover:bg-[hsl(0_0%_96%)] disabled:opacity-50 transition-colors"
+              >
+                {labels.logoUpload}
+              </button>
+              {logoUrl && (
+                <button
+                  type="button"
+                  disabled={logoUploading}
+                  onClick={handleRemoveLogo}
+                  className="text-sm text-red-500 hover:underline disabled:opacity-50"
+                >
+                  {labels.logoRemove}
+                </button>
+              )}
+            </div>
+            <p className="text-xs text-[hsl(var(--muted-foreground))]">{labels.logoHint}</p>
+          </div>
+        </div>
+        <input
+          id="logo-upload"
+          ref={fileInputRef}
+          type="file"
+          accept="image/png,image/jpeg,image/svg+xml"
+          className="hidden"
+          onChange={handleLogoChange}
+        />
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-8">

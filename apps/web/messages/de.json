@@ -85,7 +85,11 @@
       "section_defaults": "Voreinstellungen",
       "country_de": "Deutschland",
       "country_at": "Österreich",
-      "country_ch": "Schweiz"
+      "country_ch": "Schweiz",
+      "logo": "Logo",
+      "logo_hint": "PNG, JPG oder SVG · max. 1 MB",
+      "logo_upload": "Hochladen",
+      "logo_remove": "Entfernen"
     },
     "operation_templates": {
       "title": "Arbeitsgangvorlagen",
@@ -185,7 +189,8 @@
     "kebab_archive": "Archivieren",
     "kebab_delete": "Löschen",
     "forwarding_address": "Weiterleitungsadresse",
-    "forwarding_copy_confirm": "Kopiert!",
+    "forwarding_label": "Anfragen weiterleiten an",
+    "forwarding_copy_confirm": "In Zwischenablage kopiert",
     "forwarding_tooltip": "Leiten Sie unbekannte Kundenanfragen an diese Adresse weiter. ToolUp erkennt die Absender-E-Mail und erstellt automatisch eine Anfrage.",
     "bulk_selected": "ausgewählt",
     "new_rfq_subject": "Betreff / Teilbeschreibung",

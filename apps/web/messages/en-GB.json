@@ -85,7 +85,11 @@
       "section_defaults": "Defaults",
       "country_de": "Germany",
       "country_at": "Austria",
-      "country_ch": "Switzerland"
+      "country_ch": "Switzerland",
+      "logo": "Logo",
+      "logo_hint": "PNG, JPG or SVG · max. 1 MB",
+      "logo_upload": "Upload",
+      "logo_remove": "Remove"
     },
     "operation_templates": {
       "title": "Operation templates",
@@ -185,7 +189,8 @@
     "kebab_archive": "Archive",
     "kebab_delete": "Delete",
     "forwarding_address": "Forwarding address",
-    "forwarding_copy_confirm": "Copied!",
+    "forwarding_label": "Forward missing RFQs to",
+    "forwarding_copy_confirm": "Copied to clipboard",
     "forwarding_tooltip": "Forward unknown customer RFQs to this address. ToolUp detects the sender email and automatically creates an RFQ.",
     "bulk_selected": "selected",
     "new_rfq_subject": "Subject / Part description",

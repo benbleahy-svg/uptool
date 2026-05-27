@@ -38,12 +38,13 @@ export const rfqService = {
       const rfqNumber = updated?.rfqCounter;
       if (!rfqNumber) throw new Error("Failed to increment RFQ counter");
 
-      // Resolve customer/contact
+      // Resolve customer/contact (pass bodyText for signature-based name derivation)
       const { customerId, contactId } = await customerService.findOrCreate(
         tx as typeof db,
         input.orgId,
         input.fromEmail,
         input.fromName,
+        input.bodyText,
       );
 
       // Create RFQ

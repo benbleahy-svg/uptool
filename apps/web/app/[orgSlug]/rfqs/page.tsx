@@ -2,7 +2,7 @@ import { getTranslations, getLocale } from "next-intl/server";
 import { db } from "@uptool/db";
 import { notFound, redirect } from "next/navigation";
 import { auth } from "@/auth";
-import { rfqService, memberService } from "@uptool/services";
+import { rfqService, memberService, storageService } from "@uptool/services";
 import { RfqTable, type RfqRow } from "./rfq-table";
 import { createManualRfq } from "./actions";
 
@@ -21,10 +21,11 @@ export default async function RfqsPage({ params }: Props) {
   });
   if (!org) notFound();
 
-  const [rfqs, members, locale] = await Promise.all([
+  const [rfqs, members, locale, orgLogoUrl] = await Promise.all([
     rfqService.findByOrg(org.id),
     memberService.listForOrg(org.id),
     getLocale(),
+    org.logoUrl ? storageService.presignedUrl(org.logoUrl, 3600) : Promise.resolve(null),
   ]);
 
   const rows: RfqRow[] = rfqs.map((r) => ({
@@ -56,6 +57,8 @@ export default async function RfqsPage({ params }: Props) {
       <RfqTable
         data={rows}
         orgSlug={orgSlug}
+        orgName={org.name}
+        orgLogoUrl={orgLogoUrl}
         members={members}
         locale={locale}
         forwardingAddress={org.forwardingAddress ?? null}
@@ -64,6 +67,7 @@ export default async function RfqsPage({ params }: Props) {
           title: tRfq("title"),
           searchPlaceholder: tRfq("search_placeholder"),
           forwardingAddress: tRfq("forwarding_address"),
+          forwardingLabel: tRfq("forwarding_label"),
           forwardingCopyConfirm: tRfq("forwarding_copy_confirm"),
           forwardingTooltip: tRfq("forwarding_tooltip"),
           newRfq: tRfq("new_rfq"),
@@ -76,8 +80,8 @@ export default async function RfqsPage({ params }: Props) {
           lastEmail: tTable("last_email"),
           dateToday: tDate("today"),
           dateYesterday: tDate("yesterday"),
-          dateAgo: tDate("ago"),
-          dateAgoPlural: tDate("ago_plural"),
+          dateAgo: tDate.raw("ago"),
+          dateAgoPlural: tDate.raw("ago_plural"),
           assignee: tTable("assignee"),
           assignPlaceholder: tRfq("assign_placeholder"),
           assignSearch: tRfq("assign_search"),

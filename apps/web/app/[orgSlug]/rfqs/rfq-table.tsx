@@ -10,7 +10,7 @@ import {
 } from "@tanstack/react-table";
 import { useRouter } from "next/navigation";
 import { useState, useTransition, useMemo, useRef, useEffect } from "react";
-import { InboxIcon, Search, Copy, Check, Info, Plus, MoreVertical, Box } from "lucide-react";
+import { InboxIcon, Search, Info, Plus, MoreVertical, Box } from "lucide-react";
 import { updateRfqStatus } from "./actions";
 import { AssigneeCell } from "./assignee-cell";
 import type { OrgMember } from "@uptool/services";
@@ -29,6 +29,28 @@ export type RfqRow = {
   assigneeId: string | null;
   partCount: number;
 };
+
+// ─── Org logo ─────────────────────────────────────────────────────────────────
+
+function OrgLogo({ name, url }: { name: string; url: string | null }) {
+  if (url) {
+    return (
+      <img
+        src={url}
+        alt={name}
+        className="h-9 w-9 rounded-md object-contain shrink-0"
+      />
+    );
+  }
+  const initial = name[0]?.toUpperCase() ?? "?";
+  return (
+    <div className="h-9 w-9 rounded-md bg-[hsl(var(--primary))] flex items-center justify-center shrink-0 select-none">
+      <span className="text-sm font-semibold text-[hsl(var(--primary-foreground))]">
+        {initial}
+      </span>
+    </div>
+  );
+}
 
 // ─── Status pill ──────────────────────────────────────────────────────────────
 
@@ -244,6 +266,8 @@ const columnHelper = createColumnHelper<RfqRow>();
 interface Props {
   data: RfqRow[];
   orgSlug: string;
+  orgName: string;
+  orgLogoUrl: string | null;
   members: OrgMember[];
   locale: string;
   forwardingAddress: string | null;
@@ -252,6 +276,7 @@ interface Props {
     title: string;
     searchPlaceholder: string;
     forwardingAddress: string;
+    forwardingLabel: string;
     forwardingCopyConfirm: string;
     forwardingTooltip: string;
     newRfq: string;
@@ -290,6 +315,8 @@ interface Props {
 export function RfqTable({
   data,
   orgSlug,
+  orgName,
+  orgLogoUrl,
   members,
   locale,
   forwardingAddress,
@@ -460,9 +487,10 @@ export function RfqTable({
     <div className="flex flex-col h-full">
       {/* Top bar */}
       <div className="flex h-16 items-center gap-4 px-6 border-b border-[hsl(var(--border))] flex-shrink-0">
-        <h1 className="text-2xl font-semibold shrink-0">{labels.title}</h1>
+        <OrgLogo name={orgName} url={orgLogoUrl} />
+        <h1 className="text-xl font-semibold shrink-0">{labels.title}</h1>
 
-        <div className="relative max-w-[480px] w-full">
+        <div className="relative max-w-[360px] w-full">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[hsl(var(--muted-foreground))]" />
           <input
             type="search"
@@ -473,33 +501,26 @@ export function RfqTable({
           />
         </div>
 
+        <div className="flex-1" />
+
         {forwardingAddress && (
           <div className="flex items-center gap-1.5 shrink-0">
-            <span className="text-xs text-[hsl(var(--muted-foreground))]">
-              {labels.forwardingAddress}:
+            <span className="text-xs text-[hsl(var(--muted-foreground))] whitespace-nowrap">
+              {labels.forwardingLabel}
             </span>
-            <code className="text-xs bg-[hsl(var(--muted))] px-2 py-1 rounded font-mono">
-              {forwardingAddress}
-            </code>
             <button
               type="button"
               onClick={handleCopy}
-              title={labels.forwardingCopyConfirm}
-              className="p-1 rounded hover:bg-[hsl(var(--accent))] transition-colors"
+              className="text-xs text-[hsl(var(--primary))] font-mono hover:underline truncate max-w-[200px]"
+              title={forwardingAddress}
             >
-              {copied ? (
-                <Check className="w-3.5 h-3.5 text-green-500" />
-              ) : (
-                <Copy className="w-3.5 h-3.5 text-[hsl(var(--muted-foreground))]" />
-              )}
+              {copied ? labels.forwardingCopyConfirm : forwardingAddress}
             </button>
             <span title={labels.forwardingTooltip} className="cursor-help">
               <Info className="w-3.5 h-3.5 text-[hsl(var(--muted-foreground))]" />
             </span>
           </div>
         )}
-
-        <div className="flex-1" />
 
         <div className="relative shrink-0">
           <button

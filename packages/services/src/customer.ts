@@ -1,9 +1,13 @@
-import { contacts, customers, db } from "@uptool/db";
+import { contacts, customers, aiRuns, db } from "@uptool/db";
 import { eq, and } from "drizzle-orm";
+import {
+  deriveCustomerName,
+  emailDomain,
+  type CustomerSource,
+  type DerivationResult,
+} from "./derive-customer-name.js";
 
-function emailDomain(email: string): string {
-  return email.split("@")[1]?.toLowerCase() ?? "";
-}
+export type { CustomerSource };
 
 export const customerService = {
   async findOrCreate(
@@ -11,6 +15,7 @@ export const customerService = {
     orgId: string,
     fromEmail: string,
     fromName?: string,
+    bodyText?: string,
   ): Promise<{ customerId: string | null; contactId: string }> {
     const email = fromEmail.toLowerCase();
     const domain = emailDomain(email);
@@ -23,24 +28,50 @@ export const customerService = {
       return { customerId: existingContact.customerId, contactId: existingContact.id };
     }
 
-    // Find existing customer by domain
+    // Deduplication: find existing customer by domain
     let customerId: string | null = null;
-    if (domain) {
-      const existingCustomer = await tx.query.customers.findFirst({
-        where: (c, { and, eq }) => and(eq(c.orgId, orgId), eq(c.domain, domain)),
+    const existingCustomer = domain
+      ? await tx.query.customers.findFirst({
+          where: (c, { and, eq }) => and(eq(c.orgId, orgId), eq(c.domain, domain)),
+        })
+      : null;
+
+    if (existingCustomer) {
+      customerId = existingCustomer.id;
+    } else {
+      const derivation: DerivationResult = await deriveCustomerName({
+        fromEmail: email,
+        fromName,
+        bodyText,
       });
-      if (existingCustomer) {
-        customerId = existingCustomer.id;
-      } else {
-        const [newCustomer] = await tx
-          .insert(customers)
-          .values({ orgId, name: domain, domain })
-          .returning();
-        customerId = newCustomer?.id ?? null;
+
+      const [newCustomer] = await tx
+        .insert(customers)
+        .values({
+          orgId,
+          name: derivation.name,
+          domain: domain || null,
+          source: derivation.source,
+          extractionConfidence: derivation.confidence,
+        })
+        .returning();
+
+      customerId = newCustomer?.id ?? null;
+
+      // Log AI run inside the org-context transaction
+      if (derivation.aiRunData && customerId) {
+        await tx.insert(aiRuns).values({
+          orgId,
+          model: derivation.aiRunData.model,
+          promptVersion: derivation.aiRunData.promptVersion,
+          inputHash: derivation.aiRunData.inputHash,
+          outputJsonb: derivation.aiRunData.outputJsonb,
+          latencyMs: derivation.aiRunData.latencyMs,
+          costUsd: derivation.aiRunData.costUsd,
+        });
       }
     }
 
-    // Create contact
     const [newContact] = await tx
       .insert(contacts)
       .values({ orgId, customerId, email, name: fromName ?? null })
@@ -48,6 +79,16 @@ export const customerService = {
 
     if (!newContact) throw new Error("Failed to create contact");
     return { customerId, contactId: newContact.id };
+  },
+
+  async deriveFromEmail(opts: {
+    orgId: string;
+    fromEmail: string;
+    fromName?: string;
+    bodyText?: string;
+  }): Promise<{ name: string; source: CustomerSource; confidence: string | null }> {
+    const result = await deriveCustomerName(opts);
+    return { name: result.name, source: result.source, confidence: result.confidence };
   },
 
   async findByOrg(orgId: string) {

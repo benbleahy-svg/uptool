@@ -75,6 +75,7 @@ export const orgs = pgTable("orgs", {
   phone: text("phone"),
   website: text("website"),
   defaultHourlyRateCents: integer("default_hourly_rate_cents").notNull().default(0),
+  logoUrl: text("logo_url"),
   forwardingAddress: text("forwarding_address"),
   rfqCounter: integer("rfq_counter").notNull().default(1000),
   quoteCounter: integer("quote_counter").notNull().default(0),
@@ -170,6 +171,14 @@ export const emailAccounts = pgTable(
   (t) => [index("idx_email_accounts_org").on(t.orgId)],
 );
 
+export const customerSourceEnum = pgEnum("customer_source", [
+  "signature_parsed",
+  "ai_extracted",
+  "domain_derived",
+  "free_provider_fallback",
+  "manual",
+]);
+
 export const customers = pgTable(
   "customers",
   {
@@ -179,6 +188,8 @@ export const customers = pgTable(
       .references(() => orgs.id, { onDelete: "cascade" }),
     name: text("name").notNull(),
     domain: text("domain"),
+    source: customerSourceEnum("source"),
+    extractionConfidence: numeric("extraction_confidence", { precision: 4, scale: 2 }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [index("idx_customers_org_domain").on(t.orgId, t.domain)],

@@ -2,8 +2,9 @@ import { getTranslations } from "next-intl/server";
 import { db } from "@uptool/db";
 import { notFound } from "next/navigation";
 import { requireAuth } from "@/lib/auth";
+import { storageService } from "@uptool/services";
 import { GeneralForm } from "./general-form";
-import { saveGeneralSettings } from "./actions";
+import { saveGeneralSettings, uploadLogo, removeLogo } from "./actions";
 
 interface Props {
   params: Promise<{ orgSlug: string }>;
@@ -26,6 +27,8 @@ export default async function GeneralSettingsPage({ params }: Props) {
   const addr = (org.addressJsonb ?? {}) as AddressJsonb;
   const t = await getTranslations("settings.shop");
 
+  const logoUrl = org.logoUrl ? await storageService.presignedUrl(org.logoUrl, 3600) : null;
+
   const initial = {
     name: org.name,
     vatId: org.vatId ?? "",
@@ -36,6 +39,7 @@ export default async function GeneralSettingsPage({ params }: Props) {
     city: addr.city ?? "",
     country: (addr.country ?? org.country) as "DE" | "AT" | "CH",
     defaultRateEuros: ((org.defaultHourlyRateCents ?? 0) / 100).toFixed(2),
+    logoUrl,
   };
 
   const labels = {
@@ -58,6 +62,10 @@ export default async function GeneralSettingsPage({ params }: Props) {
     countryCh: t("country_ch"),
     defaultRate: t("default_rate"),
     save: t("save"),
+    logo: t("logo"),
+    logoHint: t("logo_hint"),
+    logoUpload: t("logo_upload"),
+    logoRemove: t("logo_remove"),
   };
 
   return (
@@ -66,6 +74,8 @@ export default async function GeneralSettingsPage({ params }: Props) {
       initial={initial}
       labels={labels}
       onSave={saveGeneralSettings}
+      onUploadLogo={uploadLogo}
+      onRemoveLogo={removeLogo}
     />
   );
 }
