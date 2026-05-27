@@ -604,7 +604,7 @@ export function RfqTable({
       </div>
 
       {/* Table — white card */}
-      <div className="flex flex-col flex-1 min-h-0 bg-white rounded-lg border border-[hsl(var(--border))] shadow-sm overflow-hidden mx-4 mb-4">
+      <div className="flex flex-col flex-1 min-h-0 bg-white rounded-t-lg border border-[hsl(var(--border))] shadow-sm overflow-hidden mx-4">
       <div className="flex-1 overflow-auto">
         {filtered.length === 0 && data.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full min-h-[400px] text-center">
