@@ -109,7 +109,7 @@ export function Sidebar({
   ];
 
   return (
-    <aside className="flex flex-col h-screen w-[72px] shrink-0 border-r border-[hsl(var(--border))] bg-[hsl(var(--sidebar))]">
+    <aside className="flex flex-col h-screen w-[96px] shrink-0 border-r border-[hsl(var(--border))] bg-[hsl(var(--sidebar))]">
       {/* Brand glyph */}
       <div className="flex flex-col items-center py-4">
         <Link

@@ -621,7 +621,7 @@ export function RfqTable({
           </div>
         ) : (
           <table className="w-full text-sm table-fixed">
-            <thead className="border-b border-[hsl(var(--border))] bg-[hsl(0_0%_99%)] sticky top-0">
+            <thead className="border-b border-[hsl(var(--border))] bg-white sticky top-0">
               {table.getHeaderGroups().map((headerGroup) => (
                 <tr key={headerGroup.id} style={{ height: "60px" }}>
                   {headerGroup.headers.map((header) => (
