@@ -10,12 +10,18 @@ export function SignInForm() {
   const [email, setEmail] = useState("");
   const [sent, setSent] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   async function handleEmailSubmit(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
-    await signIn("resend", { email, redirect: false });
-    setSent(true);
+    setError(null);
+    const result = await signIn("resend", { email, redirect: false });
+    if (result?.error) {
+      setError(result.error);
+    } else {
+      setSent(true);
+    }
     setLoading(false);
   }
 
@@ -41,6 +47,9 @@ export function SignInForm() {
         <Button type="submit" className="w-full" disabled={loading}>
           {loading ? "…" : t("submit")}
         </Button>
+        {error && (
+          <p className="text-sm text-[hsl(var(--destructive))]">{error}</p>
+        )}
       </form>
 
       <div className="relative">
