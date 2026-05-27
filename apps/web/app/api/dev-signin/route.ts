@@ -18,24 +18,18 @@ export async function GET(req: NextRequest) {
 
   const email = "owner@acme.test";
   const secret = process.env.AUTH_SECRET ?? "";
-
-  // Generate a one-time token that Auth.js can verify via its normal callback flow
   const rawToken = randomBytes(32).toString("hex");
   const storedToken = await sha256hex(`${rawToken}${secret}`);
-  const expires = new Date(Date.now() + 5 * 60 * 1000); // 5 minutes
+  const expires = new Date(Date.now() + 5 * 60 * 1000);
 
-  // Remove any stale tokens for this email then insert a fresh one
   await db
     .delete(authVerificationTokens)
     .where(eq(authVerificationTokens.identifier, email));
 
-  await db.insert(authVerificationTokens).values({
-    identifier: email,
-    token: storedToken,
-    expires,
-  });
+  await db
+    .insert(authVerificationTokens)
+    .values({ identifier: email, token: storedToken, expires });
 
-  // Hand off to Auth.js — it validates the token, creates its own JWT, and redirects
   const callbackUrl = encodeURIComponent("/acme/rfqs");
   const destination = new URL(
     `/api/auth/callback/resend?callbackUrl=${callbackUrl}&token=${rawToken}&email=${encodeURIComponent(email)}`,
