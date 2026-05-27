@@ -24,13 +24,13 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     Resend({
       from: process.env.RESEND_FROM_EMAIL ?? "noreply@localhost",
       sendVerificationRequest: async ({ identifier, url }) => {
-        // In dev without a Resend key, log the magic link instead of sending email
-        if (process.env.NODE_ENV === "development" && !process.env.RESEND_API_KEY) {
+        // Always log the magic link in dev so local testing never requires a real email
+        if (process.env.NODE_ENV === "development") {
           console.log("\n=== MAGIC LINK (dev mode) ===");
           console.log(`To: ${identifier}`);
           console.log(`URL: ${url}`);
           console.log("============================\n");
-          return;
+          if (!process.env.RESEND_API_KEY) return;
         }
 
         const { Resend: ResendClient } = await import("resend");
