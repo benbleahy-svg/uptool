@@ -47,6 +47,17 @@
     "not_found": "Nicht gefunden."
   },
   "settings": {
+    "nav_heading": "Einstellungen",
+    "nav_general": "Allgemein",
+    "nav_users": "Mitglieder",
+    "nav_billing": "Abrechnung",
+    "nav_calculator_templates": "Kalkulationsvorlagen",
+    "nav_workflow_templates": "Arbeitsgangvorlagen",
+    "nav_quote_template": "Angebotsvorlage",
+    "nav_rfq_web_form": "Anfrageformular",
+    "nav_learning": "Lernen",
+    "coming_soon_title": "Demnächst verfügbar",
+    "coming_soon_subtitle": "Dieser Bereich wird gerade entwickelt.",
     "shop": {
       "title": "Shop-Profil",
       "subtitle": "Angaben, die auf Angeboten erscheinen und für Kunden sichtbar sind.",
@@ -59,7 +70,14 @@
       "postal": "PLZ",
       "country": "Land",
       "default_rate": "Standard-Stundensatz (€/h)",
-      "save": "Speichern"
+      "save": "Speichern",
+      "section_business": "Unternehmen",
+      "section_contact": "Kontakt",
+      "section_address": "Adresse",
+      "section_defaults": "Voreinstellungen",
+      "country_de": "Deutschland",
+      "country_at": "Österreich",
+      "country_ch": "Schweiz"
     },
     "operation_templates": {
       "title": "Arbeitsgangvorlagen",

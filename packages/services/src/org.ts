@@ -1,7 +1,7 @@
 import { eq, sql } from "drizzle-orm";
 import { db, memberships, orgs, users } from "@uptool/db";
-import type { CreateOrgInput } from "@uptool/shared";
-import { generateSlug, RESERVED_SLUGS, BRAND } from "@uptool/shared";
+import type { CreateOrgInput, UpdateGeneralSettingsInput } from "@uptool/shared";
+import { generateSlug, RESERVED_SLUGS, BRAND, UpdateGeneralSettingsSchema } from "@uptool/shared";
 
 async function findUniqueSlug(base: string): Promise<string> {
   const candidate = generateSlug(base);
@@ -61,6 +61,28 @@ export const orgService = {
 
       return org;
     });
+  },
+
+  async updateGeneralSettings(orgId: string, raw: UpdateGeneralSettingsInput) {
+    const data = UpdateGeneralSettingsSchema.parse(raw);
+    await db
+      .update(orgs)
+      .set({
+        name: data.name,
+        vatId: data.vatId ?? null,
+        phone: data.phone ?? null,
+        website: data.website ?? null,
+        country: data.country,
+        defaultHourlyRateCents: data.defaultHourlyRateCents,
+        addressJsonb: {
+          street: data.street ?? undefined,
+          postal: data.postal ?? undefined,
+          city: data.city ?? undefined,
+          country: data.country,
+        },
+        updatedAt: new Date(),
+      })
+      .where(eq(orgs.id, orgId));
   },
 
   async updateProfile(

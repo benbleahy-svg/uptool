@@ -47,6 +47,17 @@
     "not_found": "Not found."
   },
   "settings": {
+    "nav_heading": "Settings",
+    "nav_general": "General",
+    "nav_users": "Users",
+    "nav_billing": "Billing",
+    "nav_calculator_templates": "Calculator templates",
+    "nav_workflow_templates": "Workflow templates",
+    "nav_quote_template": "Quote template",
+    "nav_rfq_web_form": "RFQ web form",
+    "nav_learning": "Learning",
+    "coming_soon_title": "Coming soon",
+    "coming_soon_subtitle": "This section is still in development.",
     "shop": {
       "title": "Shop profile",
       "subtitle": "Details printed on quotes and visible to customers.",
@@ -59,7 +70,14 @@
       "postal": "Postcode",
       "country": "Country",
       "default_rate": "Default hourly rate (€/h)",
-      "save": "Save"
+      "save": "Save",
+      "section_business": "Business",
+      "section_contact": "Contact",
+      "section_address": "Address",
+      "section_defaults": "Defaults",
+      "country_de": "Germany",
+      "country_at": "Austria",
+      "country_ch": "Switzerland"
     },
     "operation_templates": {
       "title": "Operation templates",

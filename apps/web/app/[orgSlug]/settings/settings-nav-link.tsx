@@ -19,8 +19,8 @@ export function SettingsNavLink({ href, label }: Props) {
       className={cn(
         "block rounded-md px-3 py-2 text-sm transition-colors",
         active
-          ? "bg-[hsl(var(--accent))] text-[hsl(var(--primary))] font-medium"
-          : "text-[hsl(var(--foreground))] hover:bg-[hsl(var(--muted))]",
+          ? "bg-[hsl(215_81%_96%)] text-[hsl(var(--primary))] font-medium"
+          : "text-[hsl(var(--foreground))] hover:bg-[hsl(0_0%_96%)]",
       )}
     >
       {label}

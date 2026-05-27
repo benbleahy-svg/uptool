@@ -6,5 +6,5 @@ interface Props {
 
 export default async function SettingsPage({ params }: Props) {
   const { orgSlug } = await params;
-  redirect(`/${orgSlug}/settings/shop`);
+  redirect(`/${orgSlug}/settings/general`);
 }
