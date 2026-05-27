@@ -144,7 +144,7 @@
     }
   },
   "rfqs": {
-    "title": "Anfragen",
+    "title": "Anfragen Dashboard",
     "new_rfq": "Neue Anfrage",
     "tabs": {
       "thread": "E-Mail-Verlauf",

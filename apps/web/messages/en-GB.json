@@ -144,7 +144,7 @@
     }
   },
   "rfqs": {
-    "title": "RFQs",
+    "title": "RFQ Dashboard",
     "new_rfq": "New RFQ",
     "tabs": {
       "thread": "Email thread",

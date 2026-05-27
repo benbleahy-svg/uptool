@@ -87,7 +87,7 @@ function StatusPill({ status, label }: { status: RfqRow["status"]; label: string
         {[0, 1, 2].map((i) => (
           <span
             key={i}
-            className={`h-1.5 w-6 ${i === 0 ? "rounded-l-full" : ""} ${i === 2 ? "rounded-r-full" : ""} ${i < filledCount ? fillColor : emptyColor}`}
+            className={`h-3 w-6 ${i === 0 ? "rounded-l-full" : ""} ${i === 2 ? "rounded-r-full" : ""} ${i < filledCount ? fillColor : emptyColor}`}
           />
         ))}
       </div>
@@ -262,6 +262,8 @@ function KebabMenu({
 
 const TH =
   "px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-[hsl(var(--muted-foreground))] cursor-pointer select-none whitespace-nowrap";
+const TH_CENTER =
+  "px-4 py-3 text-center text-xs font-medium uppercase tracking-wider text-[hsl(var(--muted-foreground))] cursor-pointer select-none whitespace-nowrap";
 
 const columnHelper = createColumnHelper<RfqRow>();
 
@@ -401,19 +403,19 @@ export function RfqTable({
           </span>
         );
       },
-      size: 200,
+      size: 160,
     }),
     columnHelper.accessor("partCount", {
       header: labels.parts,
       cell: (info) => <PartsCell count={info.getValue()} />,
-      size: 240,
+      size: 640,
     }),
     columnHelper.accessor("status", {
       header: labels.status,
       cell: (info) => (
         <StatusPill status={info.getValue()} label={statusLabels[info.getValue()]} />
       ),
-      size: 160,
+      size: 150,
     }),
     columnHelper.accessor("receivedAt", {
       header: labels.dateReceived,
@@ -422,7 +424,7 @@ export function RfqTable({
           {formatSmartDate(info.getValue(), locale, dateLabels)}
         </span>
       ),
-      size: 120,
+      size: 100,
     }),
     columnHelper.accessor("lastEmailAt", {
       header: labels.lastEmail,
@@ -433,7 +435,7 @@ export function RfqTable({
             : "—"}
         </span>
       ),
-      size: 120,
+      size: 100,
     }),
     columnHelper.display({
       id: "assignee",
@@ -457,7 +459,7 @@ export function RfqTable({
           }}
         />
       ),
-      size: 200,
+      size: 150,
     }),
     columnHelper.display({
       id: "actions",
@@ -488,21 +490,20 @@ export function RfqTable({
   });
 
   return (
-    <div className="flex flex-col h-full bg-[hsl(210_20%_95%)] p-4">
-      <div className="flex flex-col flex-1 min-h-0 bg-white rounded-lg border border-[hsl(var(--border))] shadow-sm overflow-hidden">
-      {/* Top bar */}
-      <div className="flex h-16 items-center gap-4 px-6 border-b border-[hsl(var(--border))] flex-shrink-0">
+    <div className="flex flex-col h-full bg-[hsl(210_20%_95%)]">
+      {/* Top bar — sits on grey, outside the white card */}
+      <div className="flex h-16 items-center gap-4 px-6 flex-shrink-0">
         <OrgLogo name={orgName} url={orgLogoUrl} />
         <h1 className="text-xl font-semibold shrink-0">{labels.title}</h1>
 
-        <div className="relative max-w-[360px] w-full">
+        <div className="relative max-w-[600px] w-full">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[hsl(var(--muted-foreground))]" />
           <input
             type="search"
             placeholder={labels.searchPlaceholder}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full rounded-md border border-[hsl(var(--border))] pl-9 pr-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-[hsl(var(--ring))]"
+            className="w-full rounded-md border border-[hsl(var(--border))] bg-white pl-9 pr-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-[hsl(var(--ring))]"
           />
         </div>
 
@@ -602,7 +603,8 @@ export function RfqTable({
         </div>
       </div>
 
-      {/* Table */}
+      {/* Table — white card */}
+      <div className="flex flex-col flex-1 min-h-0 bg-white rounded-lg border border-[hsl(var(--border))] shadow-sm overflow-hidden mx-4 mb-4">
       <div className="flex-1 overflow-auto">
         {filtered.length === 0 && data.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full min-h-[400px] text-center">
@@ -620,7 +622,7 @@ export function RfqTable({
                   {headerGroup.headers.map((header) => (
                     <th
                       key={header.id}
-                      className={TH}
+                      className={header.column.id === "status" ? TH_CENTER : TH}
                       style={{ width: header.getSize() }}
                       onClick={header.column.getToggleSortingHandler()}
                       onKeyDown={(e) => {
