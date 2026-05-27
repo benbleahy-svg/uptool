@@ -16,3 +16,4 @@ export type { RecordOutboundInput } from "./reply";
 export { templateService } from "./template";
 export type { CreateTemplateInput } from "./template";
 export { memberService } from "./member";
+export type { OrgMember } from "./member";

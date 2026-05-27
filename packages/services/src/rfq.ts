@@ -209,6 +209,47 @@ export const rfqService = {
     });
   },
 
+  async assign(
+    orgId: string,
+    actingUserId: string,
+    rfqId: string,
+    assigneeUserId: string | null,
+  ) {
+    return withOrgContext(orgId, async (tx) => {
+      const [actingMembership, rfq] = await Promise.all([
+        tx.query.memberships.findFirst({
+          where: (m, { and, eq }) => and(eq(m.orgId, orgId), eq(m.userId, actingUserId)),
+        }),
+        tx.query.rfqs.findFirst({
+          where: (r, { and, eq }) => and(eq(r.id, rfqId), eq(r.orgId, orgId)),
+        }),
+      ]);
+      if (!actingMembership) throw new Error("UNAUTHORIZED");
+      if (!rfq) throw new Error("RFQ_NOT_FOUND");
+
+      if (assigneeUserId) {
+        const assigneeMembership = await tx.query.memberships.findFirst({
+          where: (m, { and, eq }) => and(eq(m.orgId, orgId), eq(m.userId, assigneeUserId)),
+        });
+        if (!assigneeMembership) throw new Error("ASSIGNEE_NOT_MEMBER");
+      }
+
+      await tx
+        .update(rfqs)
+        .set({ assigneeId: assigneeUserId, updatedAt: new Date() })
+        .where(and(eq(rfqs.id, rfqId), eq(rfqs.orgId, orgId)));
+
+      await tx.insert(auditLog).values({
+        orgId,
+        userId: actingUserId,
+        entity: "rfq",
+        entityId: rfqId,
+        action: "assign",
+        diffJsonb: { from: rfq.assigneeId, to: assigneeUserId },
+      });
+    });
+  },
+
   async updateQuantityBreaks(orgId: string, rfqId: string, quantities: number[]) {
     return withOrgContext(orgId, async (tx) => {
       await tx

@@ -9,9 +9,11 @@ import {
   type SortingState,
 } from "@tanstack/react-table";
 import { useRouter } from "next/navigation";
-import { useState, useTransition, useMemo } from "react";
-import { InboxIcon, Ban, Search, Copy, Check, Info, Plus } from "lucide-react";
+import { useState, useTransition, useMemo, useRef, useEffect } from "react";
+import { InboxIcon, Ban, Search, Copy, Check, Info, Plus, MoreVertical } from "lucide-react";
 import { updateRfqStatus, bulkUpdateRfqStatus } from "./actions";
+import { AssigneeCell } from "./assignee-cell";
+import type { OrgMember } from "@uptool/services";
 
 export type RfqRow = {
   id: string;
@@ -101,6 +103,93 @@ function StatusPills({
   );
 }
 
+function KebabMenu({
+  rfqId,
+  orgSlug,
+  labels,
+}: {
+  rfqId: string;
+  orgSlug: string;
+  labels: {
+    noBid: string;
+    assign: string;
+    archive: string;
+    delete: string;
+    comingSoon: string;
+  };
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  const [, startTransition] = useTransition();
+
+  useEffect(() => {
+    if (!open) return;
+    function onMouseDown(e: MouseEvent) {
+      if (!ref.current?.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener("mousedown", onMouseDown);
+    return () => document.removeEventListener("mousedown", onMouseDown);
+  }, [open]);
+
+  function handleNoBid() {
+    setOpen(false);
+    const fd = new FormData();
+    fd.set("orgSlug", orgSlug);
+    fd.set("rfqId", rfqId);
+    fd.set("status", "no_bid");
+    startTransition(() => updateRfqStatus(fd));
+  }
+
+  return (
+    <div
+      ref={ref}
+      className="relative flex justify-end"
+      onClick={(e) => e.stopPropagation()}
+      onKeyDown={(e) => e.stopPropagation()}
+    >
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          setOpen((v) => !v);
+        }}
+        className="rounded p-1 text-[hsl(var(--muted-foreground))] hover:bg-[hsl(0_0%_96%)] hover:text-[hsl(var(--foreground))] transition-colors"
+        aria-label="Row actions"
+      >
+        <MoreVertical className="h-4 w-4" />
+      </button>
+      {open && (
+        <div className="absolute right-0 top-full mt-1 z-50 w-52 rounded-md border border-[hsl(var(--border))] bg-white shadow-lg py-1">
+          <button
+            type="button"
+            onClick={handleNoBid}
+            className="flex w-full items-center px-3 py-2 text-sm hover:bg-[hsl(0_0%_96%)] transition-colors"
+          >
+            {labels.noBid}
+          </button>
+          <div className="my-1 border-t border-[hsl(var(--border))]" />
+          <button
+            type="button"
+            disabled
+            title={labels.comingSoon}
+            className="flex w-full items-center px-3 py-2 text-sm opacity-40 cursor-not-allowed"
+          >
+            {labels.archive}
+          </button>
+          <button
+            type="button"
+            disabled
+            title={labels.comingSoon}
+            className="flex w-full items-center px-3 py-2 text-sm text-red-500 opacity-40 cursor-not-allowed"
+          >
+            {labels.delete}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 const TH = "px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-[hsl(var(--muted-foreground))] cursor-pointer select-none whitespace-nowrap";
 
 const columnHelper = createColumnHelper<RfqRow>();
@@ -108,6 +197,7 @@ const columnHelper = createColumnHelper<RfqRow>();
 interface Props {
   data: RfqRow[];
   orgSlug: string;
+  members: OrgMember[];
   forwardingAddress: string | null;
   onCreateRfq: (fd: FormData) => Promise<void>;
   labels: {
@@ -125,6 +215,14 @@ interface Props {
     dateReceived: string;
     lastEmail: string;
     assignee: string;
+    assignPlaceholder: string;
+    assignSearch: string;
+    assignUnassigned: string;
+    assignEmpty: string;
+    kebabNoBid: string;
+    kebabArchive: string;
+    kebabDelete: string;
+    kebabComingSoon: string;
     emptyTitle: string;
     emptySubtitle: string;
     noFilterResults: string;
@@ -142,6 +240,7 @@ interface Props {
 export function RfqTable({
   data,
   orgSlug,
+  members,
   forwardingAddress,
   onCreateRfq,
   labels,
@@ -292,12 +391,47 @@ export function RfqTable({
       ),
       size: 120,
     }),
-    columnHelper.accessor("assigneeName", {
+    columnHelper.display({
+      id: "assignee",
       header: labels.assignee,
       cell: (info) => (
-        <span className="text-sm text-[hsl(var(--muted-foreground))]">{info.getValue() ?? "—"}</span>
+        <AssigneeCell
+          rfqId={info.row.original.id}
+          orgSlug={orgSlug}
+          assigneeId={info.row.original.assigneeId}
+          assigneeInitial={
+            info.row.original.assigneeName
+              ? info.row.original.assigneeName[0]?.toUpperCase() ?? null
+              : null
+          }
+          members={members}
+          labels={{
+            placeholder: labels.assignPlaceholder,
+            search: labels.assignSearch,
+            unassigned: labels.assignUnassigned,
+            empty: labels.assignEmpty,
+          }}
+        />
       ),
-      size: 120,
+      size: 180,
+    }),
+    columnHelper.display({
+      id: "actions",
+      header: "",
+      cell: (info) => (
+        <KebabMenu
+          rfqId={info.row.original.id}
+          orgSlug={orgSlug}
+          labels={{
+            noBid: labels.kebabNoBid,
+            assign: "",
+            archive: labels.kebabArchive,
+            delete: labels.kebabDelete,
+            comingSoon: labels.kebabComingSoon,
+          }}
+        />
+      ),
+      size: 48,
     }),
   ];
 
@@ -485,7 +619,7 @@ export function RfqTable({
             <tbody className="divide-y divide-[hsl(var(--border))]">
               {table.getRowModel().rows.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="px-4 py-8 text-center text-sm text-[hsl(var(--muted-foreground))]">
+                  <td colSpan={11} className="px-4 py-8 text-center text-sm text-[hsl(var(--muted-foreground))]">
                     {labels.noFilterResults}
                   </td>
                 </tr>

@@ -40,7 +40,8 @@
     "cancel": "Cancel",
     "save": "Save",
     "delete": "Delete",
-    "loading": "Loading…"
+    "loading": "Loading…",
+    "coming_soon": "Coming soon"
   },
   "errors": {
     "generic": "Something went wrong.",
@@ -170,6 +171,13 @@
     "quantity_breaks_hint": "e.g. 1, 10, 100",
     "no_filter_results": "No results match your filters.",
     "bulk_no_bid": "No bid",
+    "assign_placeholder": "Assign",
+    "assign_search": "Search…",
+    "assign_unassigned": "Unassigned",
+    "assign_empty": "No matches",
+    "kebab_no_bid": "Mark as No Bid",
+    "kebab_archive": "Archive",
+    "kebab_delete": "Delete",
     "forwarding_address": "Forwarding address",
     "forwarding_copy_confirm": "Copied!",
     "forwarding_tooltip": "Forward unknown customer RFQs to this address. ToolUp detects the sender email and automatically creates an RFQ.",

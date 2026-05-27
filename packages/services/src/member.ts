@@ -1,7 +1,29 @@
 import { db, memberships } from "@uptool/db";
 import { and, eq } from "drizzle-orm";
 
+export type OrgMember = {
+  userId: string;
+  name: string | null;
+  email: string;
+  avatarInitial: string;
+};
+
 export const memberService = {
+  async listForOrg(orgId: string): Promise<OrgMember[]> {
+    const rows = await db.query.memberships.findMany({
+      where: (m, { eq }) => eq(m.orgId, orgId),
+      with: { user: true },
+    });
+    return rows
+      .map((m) => ({
+        userId: m.userId,
+        name: m.user.name,
+        email: m.user.email,
+        avatarInitial: ((m.user.name ?? m.user.email).split(/[\s@]/)[0]?.[0] ?? "U").toUpperCase(),
+      }))
+      .sort((a, b) => (a.name ?? a.email).localeCompare(b.name ?? b.email));
+  },
+
   async findByOrg(orgId: string) {
     return db.query.memberships.findMany({
       where: (m, { eq }) => eq(m.orgId, orgId),

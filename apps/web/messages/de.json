@@ -40,7 +40,8 @@
     "cancel": "Abbrechen",
     "save": "Speichern",
     "delete": "Löschen",
-    "loading": "Wird geladen…"
+    "loading": "Wird geladen…",
+    "coming_soon": "Demnächst verfügbar"
   },
   "errors": {
     "generic": "Etwas ist schiefgegangen.",
@@ -170,6 +171,13 @@
     "quantity_breaks_hint": "z.B. 1, 10, 100",
     "no_filter_results": "Keine Ergebnisse für diese Filter.",
     "bulk_no_bid": "Kein Angebot",
+    "assign_placeholder": "Zuweisen",
+    "assign_search": "Suchen…",
+    "assign_unassigned": "Nicht zugewiesen",
+    "assign_empty": "Keine Treffer",
+    "kebab_no_bid": "Als 'Kein Angebot' markieren",
+    "kebab_archive": "Archivieren",
+    "kebab_delete": "Löschen",
     "forwarding_address": "Weiterleitungsadresse",
     "forwarding_copy_confirm": "Kopiert!",
     "forwarding_tooltip": "Leiten Sie unbekannte Kundenanfragen an diese Adresse weiter. ToolUp erkennt die Absender-E-Mail und erstellt automatisch eine Anfrage.",

@@ -117,6 +117,19 @@ export async function updateRfqStatus(formData: FormData) {
   redirect(`/${orgSlug}/rfqs`);
 }
 
+export async function assignRfq(formData: FormData) {
+  const { userId } = await requireAuth();
+  const orgSlug = formData.get("orgSlug") as string;
+  const rfqId = formData.get("rfqId") as string;
+  const assigneeUserId = (formData.get("assigneeUserId") as string) || null;
+
+  const org = await db.query.orgs.findFirst({ where: (o, { eq }) => eq(o.slug, orgSlug) });
+  if (!org) throw new Error("Org not found");
+
+  await rfqService.assign(org.id, userId, rfqId, assigneeUserId);
+  revalidatePath(`/${orgSlug}/rfqs`);
+}
+
 export async function bulkUpdateRfqStatus(formData: FormData) {
   const { userId } = await requireAuth();
   const orgSlug = formData.get("orgSlug") as string;

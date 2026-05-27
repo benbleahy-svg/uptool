@@ -2,7 +2,7 @@ import { getTranslations } from "next-intl/server";
 import { db } from "@uptool/db";
 import { notFound, redirect } from "next/navigation";
 import { auth } from "@/auth";
-import { rfqService } from "@uptool/services";
+import { rfqService, memberService } from "@uptool/services";
 import { RfqTable, type RfqRow } from "./rfq-table";
 import { createManualRfq } from "./actions";
 
@@ -21,7 +21,10 @@ export default async function RfqsPage({ params }: Props) {
   });
   if (!org) notFound();
 
-  const rfqs = await rfqService.findByOrg(org.id);
+  const [rfqs, members] = await Promise.all([
+    rfqService.findByOrg(org.id),
+    memberService.listForOrg(org.id),
+  ]);
 
   const rows: RfqRow[] = rfqs.map((r) => ({
     id: r.id,
@@ -37,11 +40,12 @@ export default async function RfqsPage({ params }: Props) {
     attachmentCount: r.attachments.length,
   }));
 
-  const [tTable, tStatus, tDash, tRfq] = await Promise.all([
+  const [tTable, tStatus, tDash, tRfq, tCommon] = await Promise.all([
     getTranslations("rfqs.table"),
     getTranslations("rfqs.status"),
     getTranslations("dashboard.empty"),
     getTranslations("rfqs"),
+    getTranslations("common"),
   ]);
 
   return (
@@ -49,6 +53,7 @@ export default async function RfqsPage({ params }: Props) {
       <RfqTable
         data={rows}
         orgSlug={orgSlug}
+        members={members}
         forwardingAddress={org.forwardingAddress ?? null}
         onCreateRfq={createManualRfq}
         labels={{
@@ -66,6 +71,14 @@ export default async function RfqsPage({ params }: Props) {
           dateReceived: tTable("date_received"),
           lastEmail: tTable("last_email"),
           assignee: tTable("assignee"),
+          assignPlaceholder: tRfq("assign_placeholder"),
+          assignSearch: tRfq("assign_search"),
+          assignUnassigned: tRfq("assign_unassigned"),
+          assignEmpty: tRfq("assign_empty"),
+          kebabNoBid: tRfq("kebab_no_bid"),
+          kebabArchive: tRfq("kebab_archive"),
+          kebabDelete: tRfq("kebab_delete"),
+          kebabComingSoon: tCommon("coming_soon"),
           emptyTitle: tDash("title"),
           emptySubtitle: tDash("subtitle"),
           noFilterResults: tRfq("no_filter_results"),
