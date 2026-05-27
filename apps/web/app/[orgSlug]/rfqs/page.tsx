@@ -1,4 +1,4 @@
-import { getTranslations } from "next-intl/server";
+import { getTranslations, getLocale } from "next-intl/server";
 import { db } from "@uptool/db";
 import { notFound, redirect } from "next/navigation";
 import { auth } from "@/auth";
@@ -21,15 +21,17 @@ export default async function RfqsPage({ params }: Props) {
   });
   if (!org) notFound();
 
-  const [rfqs, members] = await Promise.all([
+  const [rfqs, members, locale] = await Promise.all([
     rfqService.findByOrg(org.id),
     memberService.listForOrg(org.id),
+    getLocale(),
   ]);
 
   const rows: RfqRow[] = rfqs.map((r) => ({
     id: r.id,
     rfqNumber: r.rfqNumber,
     companyName: r.customer?.name ?? "—",
+    contactName: r.contact?.name ?? null,
     contactEmail: r.contact?.email ?? null,
     subject: r.subject ?? null,
     status: r.status,
@@ -37,15 +39,16 @@ export default async function RfqsPage({ params }: Props) {
     lastEmailAt: r.lastEmailAt?.toISOString() ?? null,
     assigneeName: r.assignee?.name ?? null,
     assigneeId: r.assigneeId ?? null,
-    attachmentCount: r.attachments.length,
+    partCount: r.parts.length,
   }));
 
-  const [tTable, tStatus, tDash, tRfq, tCommon] = await Promise.all([
+  const [tTable, tStatus, tDash, tRfq, tCommon, tDate] = await Promise.all([
     getTranslations("rfqs.table"),
     getTranslations("rfqs.status"),
     getTranslations("dashboard.empty"),
     getTranslations("rfqs"),
     getTranslations("common"),
+    getTranslations("date"),
   ]);
 
   return (
@@ -54,6 +57,7 @@ export default async function RfqsPage({ params }: Props) {
         data={rows}
         orgSlug={orgSlug}
         members={members}
+        locale={locale}
         forwardingAddress={org.forwardingAddress ?? null}
         onCreateRfq={createManualRfq}
         labels={{
@@ -70,6 +74,10 @@ export default async function RfqsPage({ params }: Props) {
           status: tTable("status"),
           dateReceived: tTable("date_received"),
           lastEmail: tTable("last_email"),
+          dateToday: tDate("today"),
+          dateYesterday: tDate("yesterday"),
+          dateAgo: tDate("ago"),
+          dateAgoPlural: tDate("ago_plural"),
           assignee: tTable("assignee"),
           assignPlaceholder: tRfq("assign_placeholder"),
           assignSearch: tRfq("assign_search"),
@@ -82,8 +90,6 @@ export default async function RfqsPage({ params }: Props) {
           emptyTitle: tDash("title"),
           emptySubtitle: tDash("subtitle"),
           noFilterResults: tRfq("no_filter_results"),
-          bulkNoBid: tRfq("bulk_no_bid"),
-          bulkSelected: tRfq("bulk_selected"),
           newRfqSubject: tRfq("new_rfq_subject"),
           newRfqSubjectPlaceholder: tRfq("new_rfq_subject_placeholder"),
           newRfqCustomerEmail: tRfq("new_rfq_customer_email"),

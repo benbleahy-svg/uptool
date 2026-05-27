@@ -10,8 +10,8 @@ import {
 } from "@tanstack/react-table";
 import { useRouter } from "next/navigation";
 import { useState, useTransition, useMemo, useRef, useEffect } from "react";
-import { InboxIcon, Ban, Search, Copy, Check, Info, Plus, MoreVertical } from "lucide-react";
-import { updateRfqStatus, bulkUpdateRfqStatus } from "./actions";
+import { InboxIcon, Search, Copy, Check, Info, Plus, MoreVertical, Box } from "lucide-react";
+import { updateRfqStatus } from "./actions";
 import { AssigneeCell } from "./assignee-cell";
 import type { OrgMember } from "@uptool/services";
 
@@ -19,6 +19,7 @@ export type RfqRow = {
   id: string;
   rfqNumber: number;
   companyName: string;
+  contactName: string | null;
   contactEmail: string | null;
   subject: string | null;
   status: "new" | "estimated" | "quoted" | "sent" | "won" | "lost" | "no_bid";
@@ -26,10 +27,12 @@ export type RfqRow = {
   lastEmailAt: string | null;
   assigneeName: string | null;
   assigneeId: string | null;
-  attachmentCount: number;
+  partCount: number;
 };
 
-const STATUS_SEGMENTS: Record<RfqRow["status"], number | "won" | "closed"> = {
+// ─── Status pill ──────────────────────────────────────────────────────────────
+
+const PILL_FILL: Record<RfqRow["status"], number | "won" | "closed"> = {
   new: 0,
   estimated: 1,
   quoted: 2,
@@ -39,69 +42,116 @@ const STATUS_SEGMENTS: Record<RfqRow["status"], number | "won" | "closed"> = {
   no_bid: "closed",
 };
 
-function StatusPills({
-  status,
-  label,
-  orgSlug,
-  rfqId,
-}: {
-  status: RfqRow["status"];
-  label: string;
-  orgSlug: string;
-  rfqId: string;
-}) {
-  const [isPending, startTransition] = useTransition();
-  const seg = STATUS_SEGMENTS[status];
+function StatusPill({ status, label }: { status: RfqRow["status"]; label: string }) {
+  const fill = PILL_FILL[status];
 
-  if (seg === "closed") {
+  if (fill === "closed") {
     return (
-      <span className="inline-flex items-center rounded px-2 py-0.5 text-xs font-medium bg-gray-100 text-gray-500">
+      <span className="inline-flex items-center rounded-full border border-[hsl(214_32%_91%)] px-2 py-0.5 text-xs text-[hsl(var(--muted-foreground))]">
         {label}
       </span>
     );
   }
 
-  const filledCount = seg === "won" ? 4 : (seg as number);
-  const pillColor = seg === "won" ? "bg-green-500" : "bg-blue-500";
-
-  function handleNoBid(e: React.MouseEvent) {
-    e.stopPropagation();
-    const fd = new FormData();
-    fd.set("orgSlug", orgSlug);
-    fd.set("rfqId", rfqId);
-    fd.set("status", "no_bid");
-    startTransition(() => updateRfqStatus(fd));
-  }
+  const filledCount = fill === "won" ? 3 : (fill as number);
+  const fillColor = fill === "won" ? "bg-green-500" : "bg-[hsl(215_81%_38%)]";
+  const emptyColor = "bg-[hsl(214_32%_91%)]";
 
   return (
-    <div className="flex items-center gap-2 group/status">
-      <div className="flex flex-col items-start gap-0.5">
-        <div className="flex gap-0.5">
-          {[0, 1, 2, 3].map((i) => (
-            <span
-              key={i}
-              className={`h-1.5 w-6 rounded-full ${i < filledCount ? pillColor : "bg-gray-200"}`}
-            />
-          ))}
-        </div>
-        <span className="text-[10px] text-muted-foreground leading-none">{label}</span>
+    <div className="flex flex-col items-start gap-1">
+      <div className="flex gap-0.5">
+        {[0, 1, 2].map((i) => (
+          <span
+            key={i}
+            className={`h-1.5 w-6 ${i === 0 ? "rounded-l-full" : ""} ${i === 2 ? "rounded-r-full" : ""} ${i < filledCount ? fillColor : emptyColor}`}
+          />
+        ))}
       </div>
-      {status === "new" && (
-        <div className="hidden group-hover/status:flex items-center gap-1">
-          <button
-            type="button"
-            title="No Bid"
-            onClick={handleNoBid}
-            disabled={isPending}
-            className="rounded p-0.5 text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors"
-          >
-            <Ban className="w-3.5 h-3.5" />
-          </button>
-        </div>
-      )}
+      <span className="text-[10px] text-[hsl(var(--muted-foreground))] leading-none">{label}</span>
     </div>
   );
 }
+
+// ─── Parts cell ───────────────────────────────────────────────────────────────
+
+function PartThumb() {
+  return (
+    <div className="flex h-7 w-7 items-center justify-center rounded-md bg-[hsl(0_0%_96%)]">
+      <Box className="h-3.5 w-3.5 text-[hsl(215_16%_47%)]" />
+    </div>
+  );
+}
+
+function PartsCell({ count }: { count: number }) {
+  return (
+    <div className="flex items-center gap-1.5">
+      <span
+        className={`inline-flex items-center justify-center rounded px-1.5 py-0.5 text-xs font-medium bg-[hsl(0_0%_96%)] min-w-[20px] ${count === 0 ? "text-[hsl(var(--muted-foreground))]" : "text-[hsl(var(--foreground))]"}`}
+      >
+        {count}
+      </span>
+      {count > 0 && <PartThumb />}
+      {count > 1 && <PartThumb />}
+      {count > 2 && <PartThumb />}
+    </div>
+  );
+}
+
+// ─── Date formatting ──────────────────────────────────────────────────────────
+
+function formatSmartDate(
+  isoStr: string,
+  locale: string,
+  labels: { today: string; yesterday: string },
+): string {
+  const date = new Date(isoStr);
+  const now = new Date();
+  const isDE = locale === "de";
+
+  const sameDay = (a: Date, b: Date) =>
+    a.getFullYear() === b.getFullYear() &&
+    a.getMonth() === b.getMonth() &&
+    a.getDate() === b.getDate();
+
+  const yesterday = new Date(now);
+  yesterday.setDate(yesterday.getDate() - 1);
+
+  const timeStr = isDE
+    ? date.toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit", hour12: false })
+    : date.toLocaleTimeString("en-GB", { hour: "numeric", minute: "2-digit", hour12: true });
+
+  if (sameDay(date, now)) {
+    return `${labels.today}, ${timeStr}`;
+  }
+  if (sameDay(date, yesterday)) {
+    return `${labels.yesterday}, ${timeStr}`;
+  }
+  if (date.getFullYear() === now.getFullYear()) {
+    const dayMonth = isDE
+      ? `${String(date.getDate()).padStart(2, "0")}.${String(date.getMonth() + 1).padStart(2, "0")}.`
+      : date.toLocaleDateString("en-GB", { day: "numeric", month: "short" });
+    return `${dayMonth}, ${timeStr}`;
+  }
+  return isDE
+    ? date.toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit", year: "numeric" })
+    : date.toLocaleDateString("en-GB", { day: "2-digit", month: "2-digit", year: "numeric" });
+}
+
+function formatRelative(
+  isoStr: string,
+  labels: { today: string; ago: string; agoPlural: string },
+): string {
+  const date = new Date(isoStr);
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+
+  if (diffDays === 0) return labels.today;
+  if (diffDays === 1) return labels.ago.replace("{n}", "1");
+  return labels.agoPlural.replace("{n}", String(diffDays));
+}
+
+// ─── Kebab menu ───────────────────────────────────────────────────────────────
 
 function KebabMenu({
   rfqId,
@@ -110,13 +160,7 @@ function KebabMenu({
 }: {
   rfqId: string;
   orgSlug: string;
-  labels: {
-    noBid: string;
-    assign: string;
-    archive: string;
-    delete: string;
-    comingSoon: string;
-  };
+  labels: { noBid: string; archive: string; delete: string; comingSoon: string };
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -153,7 +197,7 @@ function KebabMenu({
           e.stopPropagation();
           setOpen((v) => !v);
         }}
-        className="rounded p-1 text-[hsl(var(--muted-foreground))] hover:bg-[hsl(0_0%_96%)] hover:text-[hsl(var(--foreground))] transition-colors"
+        className="flex h-8 w-8 items-center justify-center rounded text-[hsl(var(--muted-foreground))] hover:bg-[hsl(0_0%_96%)] hover:text-[hsl(var(--foreground))] transition-colors"
         aria-label="Row actions"
       >
         <MoreVertical className="h-4 w-4" />
@@ -190,7 +234,10 @@ function KebabMenu({
   );
 }
 
-const TH = "px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-[hsl(var(--muted-foreground))] cursor-pointer select-none whitespace-nowrap";
+// ─── Table ────────────────────────────────────────────────────────────────────
+
+const TH =
+  "px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-[hsl(var(--muted-foreground))] cursor-pointer select-none whitespace-nowrap";
 
 const columnHelper = createColumnHelper<RfqRow>();
 
@@ -198,6 +245,7 @@ interface Props {
   data: RfqRow[];
   orgSlug: string;
   members: OrgMember[];
+  locale: string;
   forwardingAddress: string | null;
   onCreateRfq: (fd: FormData) => Promise<void>;
   labels: {
@@ -223,11 +271,13 @@ interface Props {
     kebabArchive: string;
     kebabDelete: string;
     kebabComingSoon: string;
+    dateToday: string;
+    dateYesterday: string;
+    dateAgo: string;
+    dateAgoPlural: string;
     emptyTitle: string;
     emptySubtitle: string;
     noFilterResults: string;
-    bulkNoBid: string;
-    bulkSelected: string;
     newRfqSubject: string;
     newRfqSubjectPlaceholder: string;
     newRfqCustomerEmail: string;
@@ -241,6 +291,7 @@ export function RfqTable({
   data,
   orgSlug,
   members,
+  locale,
   forwardingAddress,
   onCreateRfq,
   labels,
@@ -249,11 +300,16 @@ export function RfqTable({
   const router = useRouter();
   const [sorting, setSorting] = useState<SortingState>([]);
   const [search, setSearch] = useState("");
-  const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [bulkPending, startBulkTransition] = useTransition();
   const [copied, setCopied] = useState(false);
   const [newRfqOpen, setNewRfqOpen] = useState(false);
   const [formPending, startFormTransition] = useTransition();
+
+  const dateLabels = {
+    today: labels.dateToday,
+    yesterday: labels.dateYesterday,
+    ago: labels.dateAgo,
+    agoPlural: labels.dateAgoPlural,
+  };
 
   const filtered = useMemo(() => {
     const q = search.toLowerCase();
@@ -261,37 +317,11 @@ export function RfqTable({
     return data.filter(
       (row) =>
         row.companyName.toLowerCase().includes(q) ||
+        (row.contactName ?? "").toLowerCase().includes(q) ||
         (row.contactEmail ?? "").toLowerCase().includes(q) ||
         (row.subject ?? "").toLowerCase().includes(q),
     );
   }, [data, search]);
-
-  const allVisibleIds = filtered.map((r) => r.id);
-  const allSelected = allVisibleIds.length > 0 && allVisibleIds.every((id) => selected.has(id));
-
-  function toggleRow(id: string) {
-    setSelected((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  }
-
-  function toggleAll() {
-    setSelected(allSelected ? new Set() : new Set(allVisibleIds));
-  }
-
-  function handleBulkNoBid() {
-    const ids = [...selected];
-    const fd = new FormData();
-    fd.set("orgSlug", orgSlug);
-    fd.set("status", "no_bid");
-    for (const id of ids) fd.append("rfqIds", id);
-    startBulkTransition(() => {
-      bulkUpdateRfqStatus(fd).then(() => setSelected(new Set()));
-    });
-  }
 
   function handleCopy() {
     if (!forwardingAddress) return;
@@ -314,79 +344,62 @@ export function RfqTable({
   }
 
   const columns = [
-    columnHelper.display({
-      id: "select",
-      header: () => (
-        <input
-          type="checkbox"
-          checked={allSelected}
-          onChange={toggleAll}
-          className="rounded border-[hsl(var(--border))]"
-          aria-label="Select all"
-        />
-      ),
-      cell: (info) => (
-        <input
-          type="checkbox"
-          checked={selected.has(info.row.original.id)}
-          onChange={() => toggleRow(info.row.original.id)}
-          onClick={(e) => e.stopPropagation()}
-          className="rounded border-[hsl(var(--border))]"
-          aria-label="Select row"
-        />
-      ),
-      size: 40,
-    }),
     columnHelper.accessor("rfqNumber", {
       header: labels.number,
-      cell: (info) => <span className="font-mono text-sm">#{info.getValue()}</span>,
+      cell: (info) => (
+        <span className="text-sm font-medium">#{info.getValue()}</span>
+      ),
       size: 80,
     }),
     columnHelper.accessor("companyName", {
       header: labels.company,
-      cell: (info) => <span className="font-medium text-sm">{info.getValue()}</span>,
-    }),
-    columnHelper.accessor("contactEmail", {
-      header: labels.contact,
       cell: (info) => (
-        <span className="text-sm text-[hsl(var(--muted-foreground))]">{info.getValue() ?? "—"}</span>
-      ),
-    }),
-    columnHelper.accessor("attachmentCount", {
-      header: labels.parts,
-      cell: (info) => (
-        <span className="text-sm text-[hsl(var(--muted-foreground))]">
-          {info.getValue() > 0 ? info.getValue() : "—"}
+        <span className="text-sm font-semibold text-[hsl(var(--foreground))]">
+          {info.getValue()}
         </span>
       ),
-      size: 60,
+    }),
+    columnHelper.display({
+      id: "contact",
+      header: labels.contact,
+      cell: (info) => {
+        const { contactName, contactEmail } = info.row.original;
+        const display = contactName ?? contactEmail;
+        return (
+          <span className="text-sm text-[hsl(var(--muted-foreground))]">
+            {display ?? "—"}
+          </span>
+        );
+      },
+    }),
+    columnHelper.accessor("partCount", {
+      header: labels.parts,
+      cell: (info) => <PartsCell count={info.getValue()} />,
+      size: 120,
     }),
     columnHelper.accessor("status", {
       header: labels.status,
       cell: (info) => (
-        <StatusPills
-          status={info.getValue()}
-          label={statusLabels[info.getValue()]}
-          orgSlug={orgSlug}
-          rfqId={info.row.original.id}
-        />
+        <StatusPill status={info.getValue()} label={statusLabels[info.getValue()]} />
       ),
       size: 160,
     }),
     columnHelper.accessor("receivedAt", {
       header: labels.dateReceived,
       cell: (info) => (
-        <span className="text-sm text-[hsl(var(--muted-foreground))]">
-          {new Date(info.getValue()).toLocaleDateString()}
+        <span className="text-sm text-[hsl(var(--muted-foreground))] whitespace-nowrap">
+          {formatSmartDate(info.getValue(), locale, dateLabels)}
         </span>
       ),
-      size: 120,
+      size: 140,
     }),
     columnHelper.accessor("lastEmailAt", {
       header: labels.lastEmail,
       cell: (info) => (
-        <span className="text-sm text-[hsl(var(--muted-foreground))]">
-          {info.getValue() ? new Date(info.getValue() as string).toLocaleDateString() : "—"}
+        <span className="text-sm text-[hsl(var(--muted-foreground))] whitespace-nowrap">
+          {info.getValue()
+            ? formatRelative(info.getValue() as string, dateLabels)
+            : "—"}
         </span>
       ),
       size: 120,
@@ -401,7 +414,7 @@ export function RfqTable({
           assigneeId={info.row.original.assigneeId}
           assigneeInitial={
             info.row.original.assigneeName
-              ? info.row.original.assigneeName[0]?.toUpperCase() ?? null
+              ? (info.row.original.assigneeName[0]?.toUpperCase() ?? null)
               : null
           }
           members={members}
@@ -424,7 +437,6 @@ export function RfqTable({
           orgSlug={orgSlug}
           labels={{
             noBid: labels.kebabNoBid,
-            assign: "",
             archive: labels.kebabArchive,
             delete: labels.kebabDelete,
             comingSoon: labels.kebabComingSoon,
@@ -450,7 +462,6 @@ export function RfqTable({
       <div className="flex h-16 items-center gap-4 px-6 border-b border-[hsl(var(--border))] flex-shrink-0">
         <h1 className="text-2xl font-semibold shrink-0">{labels.title}</h1>
 
-        {/* Search */}
         <div className="relative max-w-[480px] w-full">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[hsl(var(--muted-foreground))]" />
           <input
@@ -462,11 +473,14 @@ export function RfqTable({
           />
         </div>
 
-        {/* Forwarding address */}
         {forwardingAddress && (
           <div className="flex items-center gap-1.5 shrink-0">
-            <span className="text-xs text-[hsl(var(--muted-foreground))]">{labels.forwardingAddress}:</span>
-            <code className="text-xs bg-[hsl(var(--muted))] px-2 py-1 rounded font-mono">{forwardingAddress}</code>
+            <span className="text-xs text-[hsl(var(--muted-foreground))]">
+              {labels.forwardingAddress}:
+            </span>
+            <code className="text-xs bg-[hsl(var(--muted))] px-2 py-1 rounded font-mono">
+              {forwardingAddress}
+            </code>
             <button
               type="button"
               onClick={handleCopy}
@@ -479,19 +493,14 @@ export function RfqTable({
                 <Copy className="w-3.5 h-3.5 text-[hsl(var(--muted-foreground))]" />
               )}
             </button>
-            <span
-              title={labels.forwardingTooltip}
-              className="cursor-help"
-            >
+            <span title={labels.forwardingTooltip} className="cursor-help">
               <Info className="w-3.5 h-3.5 text-[hsl(var(--muted-foreground))]" />
             </span>
           </div>
         )}
 
-        {/* Spacer */}
         <div className="flex-1" />
 
-        {/* New RFQ button */}
         <div className="relative shrink-0">
           <button
             type="button"
@@ -513,7 +522,10 @@ export function RfqTable({
               <div className="absolute right-0 top-full mt-1 z-20 w-80 rounded-md border border-[hsl(var(--border))] bg-white shadow-md p-4">
                 <form onSubmit={handleCreateRfq} className="space-y-3">
                   <div>
-                    <label htmlFor="new-rfq-subject" className="block text-xs text-[hsl(var(--muted-foreground))] mb-1">
+                    <label
+                      htmlFor="new-rfq-subject"
+                      className="block text-xs text-[hsl(var(--muted-foreground))] mb-1"
+                    >
                       {labels.newRfqSubject}
                     </label>
                     <input
@@ -524,7 +536,10 @@ export function RfqTable({
                     />
                   </div>
                   <div>
-                    <label htmlFor="new-rfq-email" className="block text-xs text-[hsl(var(--muted-foreground))] mb-1">
+                    <label
+                      htmlFor="new-rfq-email"
+                      className="block text-xs text-[hsl(var(--muted-foreground))] mb-1"
+                    >
                       {labels.newRfqCustomerEmail}
                     </label>
                     <input
@@ -535,7 +550,10 @@ export function RfqTable({
                     />
                   </div>
                   <div>
-                    <label htmlFor="new-rfq-name" className="block text-xs text-[hsl(var(--muted-foreground))] mb-1">
+                    <label
+                      htmlFor="new-rfq-name"
+                      className="block text-xs text-[hsl(var(--muted-foreground))] mb-1"
+                    >
                       {labels.newRfqCustomerName}
                     </label>
                     <input
@@ -558,41 +576,19 @@ export function RfqTable({
         </div>
       </div>
 
-      {/* Bulk action bar */}
-      {selected.size > 0 && (
-        <div className="flex items-center gap-3 px-6 py-2 bg-[hsl(var(--accent))] border-b border-[hsl(var(--border))] flex-shrink-0">
-          <span className="text-sm font-medium">
-            {selected.size} {labels.bulkSelected}
-          </span>
-          <button
-            type="button"
-            onClick={handleBulkNoBid}
-            disabled={bulkPending}
-            className="rounded border border-[hsl(var(--border))] bg-white px-3 py-1 text-xs font-medium hover:bg-gray-50 disabled:opacity-50"
-          >
-            {labels.bulkNoBid}
-          </button>
-          <button
-            type="button"
-            onClick={() => setSelected(new Set())}
-            className="ml-auto text-xs text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))]"
-          >
-            ✕
-          </button>
-        </div>
-      )}
-
       {/* Table */}
       <div className="flex-1 overflow-auto">
         {filtered.length === 0 && data.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full min-h-[400px] text-center">
             <InboxIcon className="w-12 h-12 text-[hsl(var(--muted-foreground))] mb-4" />
             <h2 className="text-lg font-semibold mb-2">{labels.emptyTitle}</h2>
-            <p className="text-sm text-[hsl(var(--muted-foreground))] max-w-sm">{labels.emptySubtitle}</p>
+            <p className="text-sm text-[hsl(var(--muted-foreground))] max-w-sm">
+              {labels.emptySubtitle}
+            </p>
           </div>
         ) : (
           <table className="w-full text-sm">
-            <thead className="border-b border-[hsl(var(--border))] bg-[hsl(var(--muted)/0.4)] sticky top-0">
+            <thead className="border-b border-[hsl(var(--border))] bg-[hsl(0_0%_99%)] sticky top-0">
               {table.getHeaderGroups().map((headerGroup) => (
                 <tr key={headerGroup.id}>
                   {headerGroup.headers.map((header) => (
@@ -619,7 +615,10 @@ export function RfqTable({
             <tbody className="divide-y divide-[hsl(var(--border))]">
               {table.getRowModel().rows.length === 0 ? (
                 <tr>
-                  <td colSpan={11} className="px-4 py-8 text-center text-sm text-[hsl(var(--muted-foreground))]">
+                  <td
+                    colSpan={9}
+                    className="px-4 py-8 text-center text-sm text-[hsl(var(--muted-foreground))]"
+                  >
                     {labels.noFilterResults}
                   </td>
                 </tr>
@@ -627,7 +626,8 @@ export function RfqTable({
                 table.getRowModel().rows.map((row) => (
                   <tr
                     key={row.id}
-                    className="hover:bg-[hsl(var(--muted)/0.3)] cursor-pointer transition-colors h-14"
+                    className="hover:bg-[hsl(215_81%_96%)] cursor-pointer transition-colors"
+                    style={{ height: "60px" }}
                     onClick={() => router.push(`/${orgSlug}/rfqs/${row.original.id}`)}
                     onKeyDown={(e) => {
                       if (e.key === "Enter" || e.key === " ")
@@ -635,7 +635,7 @@ export function RfqTable({
                     }}
                   >
                     {row.getVisibleCells().map((cell) => (
-                      <td key={cell.id} className="px-4 py-3.5">
+                      <td key={cell.id} className="px-4 py-3">
                         {flexRender(cell.column.columnDef.cell, cell.getContext())}
                       </td>
                     ))}

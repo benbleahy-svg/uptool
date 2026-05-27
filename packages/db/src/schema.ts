@@ -76,7 +76,7 @@ export const orgs = pgTable("orgs", {
   website: text("website"),
   defaultHourlyRateCents: integer("default_hourly_rate_cents").notNull().default(0),
   forwardingAddress: text("forwarding_address"),
-  rfqCounter: integer("rfq_counter").notNull().default(0),
+  rfqCounter: integer("rfq_counter").notNull().default(1000),
   quoteCounter: integer("quote_counter").notNull().default(0),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),

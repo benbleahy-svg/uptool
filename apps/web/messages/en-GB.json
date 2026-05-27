@@ -36,6 +36,12 @@
       "subtitle": "When customer RFQs arrive, they'll appear here."
     }
   },
+  "date": {
+    "today": "Today",
+    "yesterday": "Yesterday",
+    "ago": "{n} day ago",
+    "ago_plural": "{n} days ago"
+  },
   "common": {
     "cancel": "Cancel",
     "save": "Save",
@@ -148,7 +154,7 @@
       "contact": "Contact",
       "parts": "Parts",
       "status": "Status",
-      "date_received": "Date Received",
+      "date_received": "Received",
       "last_email": "Last Email",
       "assignee": "Assignee"
     },

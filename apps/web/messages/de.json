@@ -36,6 +36,12 @@
       "subtitle": "Wenn Anfragen von Kunden eingehen, erscheinen sie hier."
     }
   },
+  "date": {
+    "today": "Heute",
+    "yesterday": "Gestern",
+    "ago": "vor {n} Tag",
+    "ago_plural": "vor {n} Tagen"
+  },
   "common": {
     "cancel": "Abbrechen",
     "save": "Speichern",
@@ -148,7 +154,7 @@
       "contact": "Kontakt",
       "parts": "Teile",
       "status": "Status",
-      "date_received": "Eingangsdatum",
+      "date_received": "Eingang",
       "last_email": "Letzte E-Mail",
       "assignee": "Bearbeiter"
     },

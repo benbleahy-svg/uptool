@@ -171,6 +171,7 @@ export const rfqService = {
           contact: true,
           assignee: true,
           attachments: true,
+          parts: { columns: { id: true } },
         },
         orderBy: (r, { desc }) => [desc(r.receivedAt)],
         limit: 50,
