@@ -1,5 +1,5 @@
 import { describe, test, expect } from "vitest";
-import { parseSignatureCompany, domainToName } from "../derive-customer-name.js";
+import { parseSignatureCompany, domainToName } from "../derive-customer-name";
 
 describe("parseSignatureCompany", () => {
   test("finds GmbH after -- separator", () => {

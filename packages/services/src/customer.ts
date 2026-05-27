@@ -5,7 +5,7 @@ import {
   emailDomain,
   type CustomerSource,
   type DerivationResult,
-} from "./derive-customer-name.js";
+} from "./derive-customer-name";
 
 export type { CustomerSource };
 
