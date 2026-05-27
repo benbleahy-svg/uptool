@@ -1,5 +1,5 @@
 import { db, emailAccounts } from "@uptool/db";
-import { encrypt } from "@uptool/shared";
+import { encrypt } from "@uptool/shared/crypto";
 import { and, eq } from "drizzle-orm";
 
 export interface ConnectAccountInput {

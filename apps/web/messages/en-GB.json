@@ -27,7 +27,8 @@
     "customers": "Customers",
     "settings": "Settings",
     "support": "Support",
-    "signout": "Sign out"
+    "signout": "Sign out",
+    "profile": "Profile"
   },
   "dashboard": {
     "empty": {

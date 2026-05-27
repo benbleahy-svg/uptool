@@ -59,6 +59,7 @@ export default async function OrgLayout({ children, params }: OrgLayoutProps) {
           settings: t("settings"),
           support: t("support"),
           signout: t("signout"),
+          profile: t("profile"),
         }}
         userEmail={session.user.email ?? ""}
         userName={session.user.name ?? ""}

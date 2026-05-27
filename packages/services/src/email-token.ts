@@ -1,5 +1,5 @@
 import { db, emailAccounts } from "@uptool/db";
-import { decrypt, encrypt } from "@uptool/shared";
+import { decrypt, encrypt } from "@uptool/shared/crypto";
 import { eq } from "drizzle-orm";
 
 export interface TokenSet {
