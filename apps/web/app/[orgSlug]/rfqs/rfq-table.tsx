@@ -261,9 +261,11 @@ function KebabMenu({
 // ─── Table ────────────────────────────────────────────────────────────────────
 
 const TH =
-  "px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-[hsl(var(--muted-foreground))] cursor-pointer select-none whitespace-nowrap";
+  "px-4 py-3 text-left text-sm font-semibold text-[hsl(var(--foreground))] cursor-pointer select-none whitespace-nowrap";
 const TH_CENTER =
-  "px-4 py-3 text-center text-xs font-medium uppercase tracking-wider text-[hsl(var(--muted-foreground))] cursor-pointer select-none whitespace-nowrap";
+  "px-4 py-3 text-center text-sm font-semibold text-[hsl(var(--foreground))] cursor-pointer select-none whitespace-nowrap";
+const TH_WRAP =
+  "px-4 py-3 text-left text-sm font-semibold text-[hsl(var(--foreground))] cursor-pointer select-none whitespace-normal leading-tight";
 
 const columnHelper = createColumnHelper<RfqRow>();
 
@@ -427,7 +429,10 @@ export function RfqTable({
       size: 100,
     }),
     columnHelper.accessor("lastEmailAt", {
-      header: labels.lastEmail,
+      header: () => {
+        const [first, ...rest] = labels.lastEmail.split(" ");
+        return <>{first}<br />{rest.join(" ")}</>;
+      },
       cell: (info) => (
         <span className="text-sm text-[hsl(var(--muted-foreground))] whitespace-nowrap">
           {info.getValue()
@@ -618,11 +623,15 @@ export function RfqTable({
           <table className="w-full text-sm table-fixed">
             <thead className="border-b border-[hsl(var(--border))] bg-[hsl(0_0%_99%)] sticky top-0">
               {table.getHeaderGroups().map((headerGroup) => (
-                <tr key={headerGroup.id}>
+                <tr key={headerGroup.id} style={{ height: "60px" }}>
                   {headerGroup.headers.map((header) => (
                     <th
                       key={header.id}
-                      className={header.column.id === "status" ? TH_CENTER : TH}
+                      className={
+                        header.column.id === "status" ? TH_CENTER :
+                        header.column.id === "lastEmailAt" ? TH_WRAP :
+                        TH
+                      }
                       style={{ width: header.getSize() }}
                       onClick={header.column.getToggleSortingHandler()}
                       onKeyDown={(e) => {
