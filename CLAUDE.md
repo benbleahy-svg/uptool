@@ -152,3 +152,8 @@ Magic link (Resend) + Google OAuth + Microsoft OAuth (`common` tenant) via Auth.
 ### i18n
 
 Locales: `de` (primary) and `en-GB`. Uses `next-intl`. Locale resolution order: `?locale=` param → user record → org default → `Accept-Language` header → `de`. Number format: DE uses `1.234,56 €` / `26.05.2026`; EN-GB uses `1,234.56 €` / `26/05/2026`.
+
+## After running `pnpm build`
+Always run `rm -rf apps/web/.next` afterwards to clear prod artifacts
+before the dev server restarts. This prevents module-not-found errors
+from stale chunk references.
