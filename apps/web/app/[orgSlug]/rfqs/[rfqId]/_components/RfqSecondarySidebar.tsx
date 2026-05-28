@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { List, Inbox, Network, Pencil, ChevronLeft, ChevronRight } from "lucide-react";
+import { List, Inbox, Network, Pencil, ChevronLeft, ChevronRight, Download } from "lucide-react";
 import { useSidebarCollapse } from "@/components/sidebar-collapse-context";
 
 interface Part {
@@ -52,7 +52,7 @@ export function RfqSecondarySidebar({
       }}
     >
       <aside className="h-full w-full border-r border-[hsl(var(--border))] bg-[hsl(210_16%_91%)] overflow-hidden">
-        <div className={`flex flex-col mx-4 transition-opacity duration-150 ${collapsed ? "opacity-0 pointer-events-none" : "opacity-100"}`}>
+        <div className={`flex flex-col mx-4 h-full transition-opacity duration-150 ${collapsed ? "opacity-0 pointer-events-none" : "opacity-100"}`}>
           {/* RFQ pill */}
           <div className="pt-4 pb-3">
             <Link
@@ -70,7 +70,7 @@ export function RfqSecondarySidebar({
           {/* FIX 2: Contact card — grey background matching sidebar, equal px-3
               padding, shadow-sm, full wrapper width (248px). */}
           <div className="pb-3">
-            <div className="flex items-start justify-between bg-[hsl(210_20%_96%)] rounded-md border border-[#E5E7EB] shadow-sm px-3 py-2.5">
+            <div className="flex items-start justify-between bg-[hsl(210_16%_91%)] rounded-md border border-[#E5E7EB] px-3 py-2.5">
               <div>
                 <p className="text-sm font-semibold leading-snug">{contactName ?? "—"}</p>
                 <p className="text-xs text-[hsl(var(--muted-foreground))] leading-snug mt-0.5">
@@ -181,6 +181,18 @@ export function RfqSecondarySidebar({
                 </div>
               );
             })}
+          </div>
+
+          {/* Download all files */}
+          <div className="mt-auto pt-4 pb-4">
+            <button
+              type="button"
+              onClick={() => console.log("TODO: download all files for RFQ", rfqNumber)}
+              className="flex items-center gap-2 h-9 px-3 rounded-md border border-[hsl(var(--border))] bg-[hsl(210_16%_91%)] hover:bg-[hsl(0_0%_93%)] transition-colors text-[13px] font-medium text-[#1F2937]"
+            >
+              <Download className="w-4 h-4 shrink-0" />
+              Download Files
+            </button>
           </div>
         </div>
       </aside>

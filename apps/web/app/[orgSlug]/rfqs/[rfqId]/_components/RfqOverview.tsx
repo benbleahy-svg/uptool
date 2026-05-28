@@ -85,6 +85,7 @@ export function RfqOverview({ rfqNumber: _rfqNumber, quantityBreaks, lastEmail, 
   );
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
   const [search, setSearch] = useState("");
+  const [hoveredPartId, setHoveredPartId] = useState<string | null>(null);
 
   const toggleCategory = (cat: string) => {
     setActiveCategories((prev) => {
@@ -243,6 +244,8 @@ export function RfqOverview({ rfqNumber: _rfqNumber, quantityBreaks, lastEmail, 
                       <div
                         key={a.id}
                         className="flex flex-col border border-[hsl(var(--border))] rounded-lg overflow-hidden hover:border-[hsl(var(--primary))] cursor-default"
+                        onMouseEnter={() => setHoveredPartId(a.partId)}
+                        onMouseLeave={() => setHoveredPartId(null)}
                       >
                         {/* Placeholder area */}
                         <div className="h-[120px] bg-[#F3F4F6] flex flex-col items-center justify-center gap-2 shrink-0">
@@ -274,6 +277,8 @@ export function RfqOverview({ rfqNumber: _rfqNumber, quantityBreaks, lastEmail, 
                       <div
                         key={a.id}
                         className="flex items-center gap-3 py-2 px-3 border border-[hsl(var(--border))] rounded-lg hover:border-[hsl(var(--primary))] cursor-default"
+                        onMouseEnter={() => setHoveredPartId(a.partId)}
+                        onMouseLeave={() => setHoveredPartId(null)}
                       >
                         <Icon style={{ width: 20, height: 20, color: cfg.color }} className="shrink-0" />
                         <p className="text-xs font-bold truncate flex-1">{a.filename}</p>
@@ -355,7 +360,7 @@ export function RfqOverview({ rfqNumber: _rfqNumber, quantityBreaks, lastEmail, 
                     key={part.id}
                     type="button"
                     onClick={() => router.push(`/${orgSlug}/rfqs/${rfqId}?part=${part.id}`)}
-                    className="w-full grid items-start px-4 py-3 text-left hover:bg-[hsl(var(--accent))] transition-colors gap-x-3 grid-cols-[20px_104px_72px_2fr_180px_1fr]"
+                    className={`w-full grid items-start px-4 py-3 text-left transition-colors gap-x-3 grid-cols-[20px_104px_72px_2fr_180px_1fr] ${hoveredPartId === part.id ? "bg-blue-50" : "hover:bg-[hsl(var(--accent))]"}`}
                   >
                     {/* col 1: row number */}
                     <span className="text-right text-[13px] text-[#9CA3AF] pt-[5px]">{index + 1}</span>
@@ -419,7 +424,7 @@ export function RfqOverview({ rfqNumber: _rfqNumber, quantityBreaks, lastEmail, 
       </div>{/* end scrollable */}
 
       {/* Action bar */}
-      <div className="shrink-0 border-t border-[hsl(210_20%_96%)] bg-[hsl(210_20%_96%)] px-4 py-3 flex items-center justify-end gap-2">
+      <div className="shrink-0 border-t border-[hsl(var(--border))] bg-white px-4 py-3 flex items-center justify-end gap-2">
         <button
           type="button"
           className="text-sm px-4 py-2 bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 rounded-md transition-colors font-medium"
