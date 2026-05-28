@@ -307,6 +307,7 @@ export const attachments = pgTable(
     sizeBytes: integer("size_bytes"),
     storageKey: text("storage_key").notNull(),
     category: text("category").notNull().default("other"),
+    partId: uuid("part_id").references(() => parts.id, { onDelete: "set null" }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
@@ -408,6 +409,7 @@ export const attachmentsRelations = relations(attachments, ({ one }) => ({
   org: one(orgs, { fields: [attachments.orgId], references: [orgs.id] }),
   rfq: one(rfqs, { fields: [attachments.rfqId], references: [rfqs.id] }),
   message: one(emailMessages, { fields: [attachments.messageId], references: [emailMessages.id] }),
+  part: one(parts, { fields: [attachments.partId], references: [parts.id] }),
 }));
 
 export const blockListRelations = relations(blockList, ({ one }) => ({
@@ -531,6 +533,7 @@ export const operationTemplates = pgTable(
 export const partsRelations = relations(parts, ({ one, many }) => ({
   org: one(orgs, { fields: [parts.orgId], references: [orgs.id] }),
   rfq: one(rfqs, { fields: [parts.rfqId], references: [rfqs.id] }),
+  attachments: many(attachments),
   operations: many(partOperations),
   quoteLineItems: many(quoteLineItems),
 }));

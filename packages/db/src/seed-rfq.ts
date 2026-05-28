@@ -1,4 +1,4 @@
-import { sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 import * as schema from "./schema";
@@ -10,7 +10,7 @@ const client = postgres(connectionString);
 const db = drizzle(client, { schema });
 
 async function seedRfq() {
-  console.log("Seeding test RFQ...");
+  console.log("Seeding test RFQ 1004...");
 
   const org = await db.query.orgs.findFirst({
     where: (o, { eq }) => eq(o.slug, "acme"),
@@ -22,18 +22,19 @@ async function seedRfq() {
     process.exit(1);
   }
 
-  const existing = await db.query.rfqs.findFirst({
-    where: (r, { and, eq }) => and(eq(r.orgId, org.id), eq(r.rfqNumber, 1004)),
-  });
-
-  if (existing) {
-    console.log("Test RFQ 1004 already exists — skipping.");
-    await client.end();
-    return;
-  }
-
   await db.transaction(async (tx) => {
     await tx.execute(sql`select set_config('app.org_id', ${org.id}, true)`);
+
+    // Delete existing test data so the seed is idempotent
+    const existing = await tx.query.rfqs.findFirst({
+      where: (r, { and, eq }) => and(eq(r.orgId, org.id), eq(r.rfqNumber, 1004)),
+    });
+    if (existing) {
+      await tx.delete(schema.rfqs).where(and(eq(schema.rfqs.orgId, org.id), eq(schema.rfqs.rfqNumber, 1004)));
+    }
+    await tx.delete(schema.customers).where(
+      and(eq(schema.customers.orgId, org.id), eq(schema.customers.domain, "vogt-praezision.de")),
+    );
 
     // Customer
     const [customer] = await tx
@@ -46,7 +47,6 @@ async function seedRfq() {
         extractionConfidence: "0.97",
       })
       .returning();
-
     if (!customer) throw new Error("Failed to insert customer");
 
     // Contact
@@ -59,7 +59,6 @@ async function seedRfq() {
         name: "Marcus Steinberg",
       })
       .returning();
-
     if (!contact) throw new Error("Failed to insert contact");
 
     const receivedAt = new Date("2026-05-27T09:14:00Z");
@@ -74,13 +73,12 @@ async function seedRfq() {
         contactId: contact.id,
         subject: "Anfrage Baugruppe Hydraulikverteiler – 3 Pos.",
         source: "email",
-        quantityBreaks: [1, 5, 25],
+        quantityBreaks: [1, 10, 100],
         status: "new",
         receivedAt,
         lastEmailAt: receivedAt,
       })
       .returning();
-
     if (!rfq) throw new Error("Failed to insert RFQ");
 
     // Email thread + message
@@ -93,7 +91,6 @@ async function seedRfq() {
         provider: "microsoft",
       })
       .returning();
-
     if (!thread) throw new Error("Failed to insert email thread");
 
     await tx.insert(schema.emailMessages).values({
@@ -110,15 +107,15 @@ async function seedRfq() {
 wir bitten um Ihr Angebot für folgende Bauteile, die wir für eine laufende Serienumrüstung benötigen:
 
 Pos. 1: Verteilerblock Typ VB-40 (Aluminium EN AW-6082, gefräst)
-        Menge: 1 / 5 / 25 Stück
+        Menge: 1 / 10 / 100 Stück
         Zeichnung und STEP-Datei im Anhang
 
 Pos. 2: Anschlussplatte AP-12 (Edelstahl 1.4301, gefräst)
-        Menge: 1 / 5 / 25 Stück
+        Menge: 1 / 10 / 100 Stück
         Zeichnung und STEP-Datei im Anhang
 
 Pos. 3: Haltebügel HB-07 (DC01, Biegeteil)
-        Menge: 1 / 5 / 25 Stück
+        Menge: 1 / 10 / 100 Stück
         Zeichnung im Anhang
 
 Gewünschte Lieferzeit: 4–6 Wochen ab Auftragsbestätigung
@@ -138,95 +135,116 @@ m.steinberg@vogt-praezision.de`,
       receivedAt,
     });
 
-    // Attachments: 2 drawings (PDF), 2 CAD (STEP), 1 other (spec PDF categorized as 'other')
+    // Parts (English)
+    const [part1] = await tx
+      .insert(schema.parts)
+      .values({
+        orgId: org.id,
+        rfqId: rfq.id,
+        partNumber: "5216488",
+        revision: "A",
+        description: "BASE PLATE, VENT PLATE - PUB",
+        processType: "sheet_metal",
+        sortOrder: 0,
+      })
+      .returning();
+    if (!part1) throw new Error("Failed to insert part 1");
+
+    const [part2] = await tx
+      .insert(schema.parts)
+      .values({
+        orgId: org.id,
+        rfqId: rfq.id,
+        partNumber: "4990202",
+        revision: "A",
+        description: "MOUNTING BRACKET, COLLAR MOUNTING BRACKET - PUB",
+        processType: "cnc_milling",
+        sortOrder: 1,
+      })
+      .returning();
+    if (!part2) throw new Error("Failed to insert part 2");
+
+    const [part3] = await tx
+      .insert(schema.parts)
+      .values({
+        orgId: org.id,
+        rfqId: rfq.id,
+        partNumber: "PEAT Motor Stand",
+        revision: null,
+        description: "PEAT MOTOR STAND",
+        processType: "cnc_milling",
+        sortOrder: 2,
+      })
+      .returning();
+    if (!part3) throw new Error("Failed to insert part 3");
+
+    // Attachments linked to parts
     await tx.insert(schema.attachments).values([
       {
         orgId: org.id,
         rfqId: rfq.id,
-        filename: "VB-40_Zeichnung_Rev3.pdf",
+        partId: part1.id,
+        filename: "Vent Plate - Pub - Drw V1.pdf",
         contentType: "application/pdf",
         sizeBytes: 418_600,
-        storageKey: "acme/attachments/vb40-zeichnung-rev3.pdf",
+        storageKey: "acme/attachments/vent-plate-pub-drw-v1.pdf",
         category: "drawing",
       },
       {
         orgId: org.id,
         rfqId: rfq.id,
-        filename: "AP-12_Zeichnung_Rev1.pdf",
-        contentType: "application/pdf",
-        sizeBytes: 312_400,
-        storageKey: "acme/attachments/ap12-zeichnung-rev1.pdf",
-        category: "drawing",
-      },
-      {
-        orgId: org.id,
-        rfqId: rfq.id,
-        filename: "VB-40_3D-Modell.step",
+        partId: part1.id,
+        filename: "Vent Plate - Pub.step",
         contentType: "application/octet-stream",
         sizeBytes: 2_840_000,
-        storageKey: "acme/attachments/vb40-3d-modell.step",
+        storageKey: "acme/attachments/vent-plate-pub.step",
         category: "cad",
       },
       {
         orgId: org.id,
         rfqId: rfq.id,
-        filename: "AP-12_3D-Modell.step",
+        partId: part2.id,
+        filename: "Collar Mounting Bracket - Pub - Drw V1.pdf",
+        contentType: "application/pdf",
+        sizeBytes: 312_400,
+        storageKey: "acme/attachments/collar-mounting-bracket-pub-drw-v1.pdf",
+        category: "drawing",
+      },
+      {
+        orgId: org.id,
+        rfqId: rfq.id,
+        partId: part2.id,
+        filename: "Collar Mounting Bracket - Pub.step",
         contentType: "application/octet-stream",
         sizeBytes: 1_175_000,
-        storageKey: "acme/attachments/ap12-3d-modell.step",
+        storageKey: "acme/attachments/collar-mounting-bracket-pub.step",
         category: "cad",
       },
       {
         orgId: org.id,
         rfqId: rfq.id,
-        filename: "Technische_Lieferbedingungen_VogtGmbH.pdf",
+        partId: part3.id,
+        filename: "PEAT Motor Stand.pdf",
         contentType: "application/pdf",
         sizeBytes: 89_200,
-        storageKey: "acme/attachments/technische-lieferbedingungen.pdf",
-        category: "other",
-      },
-    ]);
-
-    // Parts
-    await tx.insert(schema.parts).values([
-      {
-        orgId: org.id,
-        rfqId: rfq.id,
-        partNumber: "VB-40",
-        revision: "Rev. 3",
-        description: "Verteilerblock Hydraulik",
-        material: "EN AW-6082 T6",
-        processType: "cnc_milling",
-        notesExternal: "Alle Bohrungen H7, Oberfläche eloxiert natur",
-        sortOrder: 0,
+        storageKey: "acme/attachments/peat-motor-stand.pdf",
+        category: "drawing",
       },
       {
         orgId: org.id,
         rfqId: rfq.id,
-        partNumber: "AP-12",
-        revision: "Rev. 1",
-        description: "Anschlussplatte",
-        material: "1.4301 (AISI 304)",
-        processType: "cnc_milling",
-        notesExternal: "Gewinde M6 tief 12 mm, Ra 1.6 auf Dichtfläche",
-        sortOrder: 1,
-      },
-      {
-        orgId: org.id,
-        rfqId: rfq.id,
-        partNumber: "HB-07",
-        revision: "Rev. 2",
-        description: "Haltebügel",
-        material: "DC01 t=2.0 mm",
-        processType: "sheet_metal",
-        notesExternal: "Verzinkung galvanisch 8–12 µm",
-        sortOrder: 2,
+        partId: part3.id,
+        filename: "PEAT Motor Stand.STEP",
+        contentType: "application/octet-stream",
+        sizeBytes: 654_000,
+        storageKey: "acme/attachments/peat-motor-stand.step",
+        category: "cad",
       },
     ]);
 
     console.log(`Created RFQ #1004 for ${customer.name}`);
-    console.log("  Parts: VB-40 (CNC milling), AP-12 (CNC milling), HB-07 (Sheet metal)");
-    console.log("  Attachments: 2 drawings, 2 CAD files, 1 other");
+    console.log("  Parts: 5216488 (sheet_metal), 4990202 (cnc_milling), PEAT Motor Stand (cnc_milling)");
+    console.log("  Attachments: 3 drawings, 3 CAD files, all linked to parts");
   });
 
   console.log("Test RFQ seed complete.");
