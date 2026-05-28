@@ -2,6 +2,7 @@ import { getTranslations } from "next-intl/server";
 import { db } from "@uptool/db";
 import { notFound } from "next/navigation";
 import { quoteService, partService } from "@uptool/services";
+import { resolveRfq } from "@/lib/resolve-rfq";
 import { QuoteForm, type QuoteLineItem } from "./quote-form";
 
 interface Props {
@@ -9,18 +10,16 @@ interface Props {
 }
 
 export default async function QuotePage({ params }: Props) {
-  const { orgSlug, rfqId } = await params;
+  const { orgSlug, rfqId: rfqParam } = await params;
 
   const org = await db.query.orgs.findFirst({
     where: (o, { eq }) => eq(o.slug, orgSlug),
   });
   if (!org) notFound();
 
-  const rfq = await db.query.rfqs.findFirst({
-    where: (r, { and, eq }) => and(eq(r.id, rfqId), eq(r.orgId, org.id)),
-    columns: { quantityBreaks: true },
-  });
+  const rfq = await resolveRfq(org.id, rfqParam);
   if (!rfq) notFound();
+  const rfqId = rfq.id;
 
   const quantityBreaks = rfq.quantityBreaks?.length ? rfq.quantityBreaks : [1, 10, 100];
 

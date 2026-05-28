@@ -1,6 +1,7 @@
 import { relations } from "drizzle-orm";
 import {
   boolean,
+  check,
   index,
   integer,
   jsonb,
@@ -12,6 +13,7 @@ import {
   timestamp,
   uuid,
 } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 
 // Auth.js v5 required tables
 export const authUsers = pgTable("auth_users", {
@@ -304,9 +306,13 @@ export const attachments = pgTable(
     contentType: text("content_type").notNull(),
     sizeBytes: integer("size_bytes"),
     storageKey: text("storage_key").notNull(),
+    category: text("category").notNull().default("other"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [index("idx_attachments_rfq").on(t.rfqId)],
+  (t) => [
+    index("idx_attachments_rfq").on(t.rfqId),
+    check("attachments_category_check", sql`${t.category} IN ('drawing', 'cad', 'bom', 'other')`),
+  ],
 );
 
 export const blockList = pgTable(

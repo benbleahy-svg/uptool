@@ -89,7 +89,7 @@ export async function createManualRfq(formData: FormData) {
     return newRfq;
   });
 
-  redirect(`/${orgSlug}/rfqs/${rfq.id}/estimate`);
+  redirect(`/${orgSlug}/rfqs/${rfq.rfqNumber}/estimate`);
 }
 
 export async function updateRfqStatus(formData: FormData) {

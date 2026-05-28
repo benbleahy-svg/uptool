@@ -665,10 +665,10 @@ export function RfqTable({
                     key={row.id}
                     className="hover:bg-[hsl(215_81%_96%)] cursor-pointer transition-colors"
                     style={{ height: "60px" }}
-                    onClick={() => router.push(`/${orgSlug}/rfqs/${row.original.id}`)}
+                    onClick={() => router.push(`/${orgSlug}/rfqs/${row.original.rfqNumber}`)}
                     onKeyDown={(e) => {
                       if (e.key === "Enter" || e.key === " ")
-                        router.push(`/${orgSlug}/rfqs/${row.original.id}`);
+                        router.push(`/${orgSlug}/rfqs/${row.original.rfqNumber}`);
                     }}
                   >
                     {row.getVisibleCells().map((cell) => (

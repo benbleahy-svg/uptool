@@ -1,7 +1,8 @@
 import { getTranslations } from "next-intl/server";
 import { db } from "@uptool/db";
 import { notFound } from "next/navigation";
-import { rfqService, storageService } from "@uptool/services";
+import { storageService } from "@uptool/services";
+import { resolveRfq } from "@/lib/resolve-rfq";
 import { ReplyComposer } from "./reply-composer";
 import { AttachmentPanel } from "./attachment-panel";
 
@@ -17,7 +18,8 @@ export default async function RfqThreadPage({ params }: Props) {
   });
   if (!org) notFound();
 
-  const rfq = await rfqService.findById(org.id, rfqId);
+  const rfq = await resolveRfq(org.id, rfqId);
+  const rfqUuid = rfq?.id;
   if (!rfq) notFound();
 
   const attachmentsWithUrls = await Promise.all(
@@ -94,7 +96,7 @@ export default async function RfqThreadPage({ params }: Props) {
         </div>
         <ReplyComposer
           orgSlug={orgSlug}
-          rfqId={rfqId}
+          rfqId={rfqUuid ?? rfqId}
           defaultTo={defaultTo}
           defaultSubject={defaultSubject}
           labels={{

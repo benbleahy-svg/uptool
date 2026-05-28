@@ -1,7 +1,7 @@
 import { notFound, redirect } from "next/navigation";
 import { auth } from "@/auth";
 import { db } from "@uptool/db";
-import { rfqService } from "@uptool/services";
+import { resolveRfq } from "@/lib/resolve-rfq";
 import { RfqSecondarySidebar } from "./_components/RfqSecondarySidebar";
 
 interface Props {
@@ -20,7 +20,7 @@ export default async function RfqDetailLayout({ children, params }: Props) {
   });
   if (!org) notFound();
 
-  const rfq = await rfqService.findById(org.id, rfqId);
+  const rfq = await resolveRfq(org.id, rfqId);
   if (!rfq) notFound();
 
   return (

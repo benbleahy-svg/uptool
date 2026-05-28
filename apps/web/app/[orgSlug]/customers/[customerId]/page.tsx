@@ -153,7 +153,7 @@ export default async function CustomerDetailPage({ params }: Props) {
                     </td>
                     <td className="px-4 py-2">
                       <Link
-                        href={`/${orgSlug}/rfqs/${rfq.id}/thread`}
+                        href={`/${orgSlug}/rfqs/${rfq.rfqNumber}/thread`}
                         className="hover:text-[hsl(var(--primary))] transition-colors"
                       >
                         {rfq.subject ?? "—"}

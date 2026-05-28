@@ -180,6 +180,32 @@ export const rfqService = {
     });
   },
 
+  async findByNumber(orgId: string, rfqNumber: number) {
+    return withOrgContext(orgId, async (tx) => {
+      return tx.query.rfqs.findFirst({
+        where: (r, { and, eq }) => and(eq(r.orgId, orgId), eq(r.rfqNumber, rfqNumber)),
+        with: {
+          customer: true,
+          contact: true,
+          assignee: true,
+          emailAccount: true,
+          attachments: true,
+          parts: {
+            columns: { id: true, partNumber: true, revision: true, description: true, material: true, processType: true, sortOrder: true },
+            orderBy: (p, { asc }) => [asc(p.sortOrder)],
+          },
+          threads: {
+            with: {
+              messages: {
+                orderBy: (m, { asc }) => [asc(m.receivedAt)],
+              },
+            },
+          },
+        },
+      });
+    });
+  },
+
   async findById(orgId: string, rfqId: string) {
     return withOrgContext(orgId, async (tx) => {
       return tx.query.rfqs.findFirst({
@@ -191,7 +217,7 @@ export const rfqService = {
           emailAccount: true,
           attachments: true,
           parts: {
-            columns: { id: true, partNumber: true, description: true, sortOrder: true },
+            columns: { id: true, partNumber: true, revision: true, description: true, material: true, processType: true, sortOrder: true },
             orderBy: (p, { asc }) => [asc(p.sortOrder)],
           },
           threads: {

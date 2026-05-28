@@ -2,6 +2,7 @@ import { getTranslations } from "next-intl/server";
 import { db } from "@uptool/db";
 import { notFound } from "next/navigation";
 import { quoteService } from "@uptool/services";
+import { resolveRfq } from "@/lib/resolve-rfq";
 import { sendQuote } from "../actions";
 
 interface Props {
@@ -9,18 +10,18 @@ interface Props {
 }
 
 export default async function SendQuotePage({ params }: Props) {
-  const { orgSlug, rfqId } = await params;
+  const { orgSlug, rfqId: rfqParam } = await params;
 
   const org = await db.query.orgs.findFirst({
     where: (o, { eq }) => eq(o.slug, orgSlug),
   });
   if (!org) notFound();
 
+  const rfq = await resolveRfq(org.id, rfqParam);
+  if (!rfq) notFound();
+  const rfqId = rfq.id;
+
   const quotes = await quoteService.findByRfq(org.id, rfqId);
-  const rfq = await db.query.rfqs.findFirst({
-    where: (r, { and, eq }) => and(eq(r.id, rfqId), eq(r.orgId, org.id)),
-    with: { contact: true },
-  });
 
   const t = await getTranslations("send");
 

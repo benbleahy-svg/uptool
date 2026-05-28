@@ -2,6 +2,7 @@ import { getTranslations } from "next-intl/server";
 import { db } from "@uptool/db";
 import { notFound } from "next/navigation";
 import { partService, templateService } from "@uptool/services";
+import { resolveRfq } from "@/lib/resolve-rfq";
 import { addPart, addOperation, deletePart, deleteOperation, copyOperations } from "./actions";
 import { updateRfqStatus } from "../../actions";
 import { PartNotesForm } from "./part-notes-form";
@@ -35,12 +36,16 @@ function centsToEuros(cents: number): string {
 }
 
 export default async function EstimatePage({ params }: Props) {
-  const { orgSlug, rfqId } = await params;
+  const { orgSlug, rfqId: rfqParam } = await params;
 
   const org = await db.query.orgs.findFirst({
     where: (o, { eq }) => eq(o.slug, orgSlug),
   });
   if (!org) notFound();
+
+  const resolvedRfq = await resolveRfq(org.id, rfqParam);
+  if (!resolvedRfq) notFound();
+  const rfqId = resolvedRfq.id;
 
   const [parts, rawTemplates, otherParts] = await Promise.all([
     partService.findByRfq(org.id, rfqId),
@@ -65,11 +70,7 @@ export default async function EstimatePage({ params }: Props) {
     isRecentlyUsed: recentIds.has(t.id),
   }));
 
-  const rfq = await db.query.rfqs.findFirst({
-    where: (r, { and, eq }) => and(eq(r.orgId, org.id), eq(r.id, rfqId)),
-    columns: { status: true, quantityBreaks: true },
-  });
-  if (!rfq) notFound();
+  const rfq = resolvedRfq;
 
   const quantityBreaks = rfq.quantityBreaks?.length ? rfq.quantityBreaks : [1, 10, 100];
 
