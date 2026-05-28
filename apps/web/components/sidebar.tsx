@@ -7,6 +7,7 @@ import { useState } from "react";
 import { signOut } from "next-auth/react";
 import { cn } from "@uptool/ui";
 import { LanguageSwitcher } from "./language-switcher";
+import { useSidebarCollapse } from "./sidebar-collapse-context";
 
 interface NavItem {
   href: string;
@@ -92,14 +93,25 @@ export function Sidebar({
 }: SidebarProps) {
   const pathname = usePathname();
   const [profileOpen, setProfileOpen] = useState(false);
+  const { collapsed } = useSidebarCollapse();
 
-  const initial = (userName || userEmail)
-    .split(/[\s@]/)
-    .filter(Boolean)[0]?.[0]
-    ?.toUpperCase() ?? "U";
+  // Only collapse on RFQ detail pages — secondary sidebar chevron drives this
+  const isRfqDetail = /\/rfqs\/[^/]+/.test(pathname);
+  const sidebarWidth = isRfqDetail && collapsed ? "0px" : "96px";
+
+  const initial =
+    (userName || userEmail)
+      .split(/[\s@]/)
+      .filter(Boolean)[0]?.[0]
+      ?.toUpperCase() ?? "U";
 
   const navItems: NavItem[] = [
-    { href: `/${orgSlug}/rfqs`, label: navLabels.rfqs, icon: FileText, badge: newRfqCount },
+    {
+      href: `/${orgSlug}/rfqs`,
+      label: navLabels.rfqs,
+      icon: FileText,
+      badge: newRfqCount,
+    },
     { href: `/${orgSlug}/customers`, label: navLabels.customers, icon: Building2 },
   ];
 
@@ -109,101 +121,117 @@ export function Sidebar({
   ];
 
   return (
-    <aside className="flex flex-col h-screen w-[96px] shrink-0 border-r border-[hsl(var(--border))] bg-[hsl(var(--sidebar))]">
-      {/* Brand glyph */}
-      <div className="flex flex-col items-center py-4">
-        <Link
-          href={`/${orgSlug}/rfqs`}
-          className="flex flex-col items-center gap-1"
-        >
-          <div
-            className="w-8 h-8 rounded-[6px] bg-[hsl(var(--primary))] flex items-center justify-center"
-            style={{ fontFamily: "var(--font-jetbrains-mono)" }}
-          >
-            <span className="text-white font-bold text-[14px] leading-none select-none">
-              TU
-            </span>
-          </div>
-          <span className="text-[10px] tracking-wide text-[hsl(var(--muted-foreground))] select-none">
-            toolup
-          </span>
-        </Link>
-      </div>
-
-      {/* Primary nav */}
-      <nav className="flex-1 px-1 space-y-2 pt-2">
-        {navItems.map((item) => (
-          <NavTile
-            key={item.href}
-            {...item}
-            active={pathname.startsWith(item.href)}
-          />
-        ))}
-      </nav>
-
-      {/* Bottom section */}
-      <div className="px-1 pb-4">
-        <div className="border-t border-[hsl(214_32%_91%)] my-3" />
-        <div className="space-y-2">
-          {bottomItems.map((item) => (
-            <NavTile
-              key={item.href}
-              {...item}
-              active={pathname.startsWith(item.href)}
-            />
-          ))}
-
-          {/* Profile tile */}
-          <div className="relative">
-            <button
-              type="button"
-              onClick={() => setProfileOpen((v) => !v)}
-              className="flex flex-col items-center justify-center h-14 w-full gap-1 rounded-md hover:bg-[hsl(0_0%_96%)] transition-colors"
+    // Outer wrapper: owns the animated width.
+    // min-w-0 prevents flex from using min-content-size (96px) as the floor.
+    // The profile dropdown and collapse chevron live here — outside the
+    // overflow-hidden aside — so they are never clipped.
+    <div
+      className="relative shrink-0 min-w-0"
+      style={{
+        width: sidebarWidth,
+        transition: "width 200ms ease-in-out",
+      }}
+    >
+      {/* aside: overflow-hidden clips the fixed-96px inner content */}
+      <aside className="flex flex-col h-full w-full border-r border-[hsl(var(--border))] bg-[hsl(var(--sidebar))] overflow-hidden">
+        {/* Inner content — fixed 96px so it clips cleanly as outer shrinks */}
+        <div className="flex flex-col h-full w-[96px]">
+          {/* Brand glyph */}
+          <div className="flex flex-col items-center py-4">
+            <Link
+              href={`/${orgSlug}/rfqs`}
+              className="flex flex-col items-center gap-1"
             >
-              <div className="w-8 h-8 rounded-full bg-[hsl(var(--primary))] text-white flex items-center justify-center text-sm font-medium">
-                {initial}
+              <div
+                className="w-8 h-8 rounded-[6px] bg-[hsl(var(--primary))] flex items-center justify-center"
+                style={{ fontFamily: "var(--font-jetbrains-mono)" }}
+              >
+                <span className="text-white font-bold text-[14px] leading-none select-none">
+                  TU
+                </span>
               </div>
-              <span className="text-[11px] font-medium text-[hsl(var(--muted-foreground))]">
-                {navLabels.profile}
+              <span className="text-[10px] tracking-wide text-[hsl(var(--muted-foreground))] select-none">
+                toolup
               </span>
-            </button>
+            </Link>
+          </div>
 
-            {profileOpen && (
-              <>
-                <button
-                  type="button"
-                  aria-label="Close menu"
-                  className="fixed inset-0 z-10"
-                  onClick={() => setProfileOpen(false)}
+          {/* Primary nav */}
+          <nav className="flex-1 px-1 space-y-2 pt-2">
+            {navItems.map((item) => (
+              <NavTile
+                key={item.href}
+                {...item}
+                active={pathname.startsWith(item.href)}
+              />
+            ))}
+          </nav>
+
+          {/* Bottom section */}
+          <div className="px-1 pb-4">
+            <div className="border-t border-[hsl(214_32%_91%)] my-3" />
+            <div className="space-y-2">
+              {bottomItems.map((item) => (
+                <NavTile
+                  key={item.href}
+                  {...item}
+                  active={pathname.startsWith(item.href)}
                 />
-                <div className="absolute bottom-0 left-full ml-2 w-56 z-20 rounded-[var(--radius)] border border-[hsl(var(--border))] bg-white shadow-lg">
-                  <div className="px-3 py-2.5 border-b border-[hsl(var(--border))]">
-                    <p className="text-xs font-medium truncate">
-                      {userName || userEmail}
-                    </p>
-                    {userName && (
-                      <p className="text-xs text-[hsl(var(--muted-foreground))] truncate">
-                        {userEmail}
-                      </p>
-                    )}
-                  </div>
-                  <div className="px-3 py-2 border-b border-[hsl(var(--border))]">
-                    <LanguageSwitcher currentLocale={locale} />
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => signOut({ callbackUrl: "/" })}
-                    className="flex items-center gap-2 w-full px-3 py-2 text-sm text-[hsl(var(--muted-foreground))] hover:bg-[hsl(var(--accent))] hover:text-[hsl(var(--foreground))] transition-colors rounded-b-[var(--radius)]"
-                  >
-                    <LogOut className="w-4 h-4" />
-                    {navLabels.signout}
-                  </button>
+              ))}
+
+              {/* Profile button — dropdown is rendered outside the aside below */}
+              <button
+                type="button"
+                onClick={() => setProfileOpen((v) => !v)}
+                className="flex flex-col items-center justify-center h-14 w-full gap-1 rounded-md hover:bg-[hsl(0_0%_96%)] transition-colors"
+              >
+                <div className="w-8 h-8 rounded-full bg-[hsl(var(--primary))] text-white flex items-center justify-center text-sm font-medium">
+                  {initial}
                 </div>
-              </>
-            )}
+                <span className="text-[11px] font-medium text-[hsl(var(--muted-foreground))]">
+                  {navLabels.profile}
+                </span>
+              </button>
+            </div>
           </div>
         </div>
-      </div>
-    </aside>
+      </aside>
+
+      {/* Profile dropdown — outside the aside so overflow-hidden doesn't clip it */}
+      {profileOpen && (
+        <>
+          <button
+            type="button"
+            aria-label="Close menu"
+            className="fixed inset-0 z-10"
+            onClick={() => setProfileOpen(false)}
+          />
+          <div className="absolute bottom-4 left-full ml-2 w-56 z-20 rounded-[var(--radius)] border border-[hsl(var(--border))] bg-white shadow-lg">
+            <div className="px-3 py-2.5 border-b border-[hsl(var(--border))]">
+              <p className="text-xs font-medium truncate">
+                {userName || userEmail}
+              </p>
+              {userName && (
+                <p className="text-xs text-[hsl(var(--muted-foreground))] truncate">
+                  {userEmail}
+                </p>
+              )}
+            </div>
+            <div className="px-3 py-2 border-b border-[hsl(var(--border))]">
+              <LanguageSwitcher currentLocale={locale} />
+            </div>
+            <button
+              type="button"
+              onClick={() => signOut({ callbackUrl: "/" })}
+              className="flex items-center gap-2 w-full px-3 py-2 text-sm text-[hsl(var(--muted-foreground))] hover:bg-[hsl(var(--accent))] hover:text-[hsl(var(--foreground))] transition-colors rounded-b-[var(--radius)]"
+            >
+              <LogOut className="w-4 h-4" />
+              {navLabels.signout}
+            </button>
+          </div>
+        </>
+      )}
+
+    </div>
   );
 }

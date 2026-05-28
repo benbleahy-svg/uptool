@@ -1,0 +1,201 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import { List, Inbox, Network, Pencil, ChevronLeft, ChevronRight } from "lucide-react";
+import { useSidebarCollapse } from "@/components/sidebar-collapse-context";
+
+interface Part {
+  id: string;
+  partNumber: string | null;
+  description: string | null;
+  sortOrder: number;
+}
+
+interface Props {
+  rfqNumber: number;
+  companyName: string | null;
+  contactName: string | null;
+  contactEmail: string | null;
+  parts: Part[];
+}
+
+export function RfqSecondarySidebar({
+  rfqNumber,
+  companyName,
+  contactName,
+  contactEmail,
+  parts,
+}: Props) {
+  const { collapsed, setCollapsed } = useSidebarCollapse();
+  const [selectedPartId, setSelectedPartId] = useState<string | null>(parts[0]?.id ?? null);
+
+  // Reset both sidebars to expanded when leaving the RFQ detail page
+  useEffect(() => {
+    return () => setCollapsed(false);
+  }, [setCollapsed]);
+
+  const steps = [
+    { key: "estimate", label: "Estimate", parts },
+    { key: "quote", label: "Quote", parts: [] as Part[] },
+    { key: "send", label: "Send", parts: [] as Part[] },
+  ];
+
+  return (
+    <div
+      className="relative shrink-0 min-w-0"
+      style={{
+        width: collapsed ? "28px" : "280px",
+        transition: "width 200ms ease-in-out",
+      }}
+    >
+      <aside className="h-full w-full border-r border-[hsl(var(--border))] bg-[hsl(210_20%_96%)] overflow-hidden">
+        {/*
+          ml-7 (28px): content starts exactly at the collapse boundary so
+          nothing bleeds through the 28px rail. w-[248px]: 280 - 28 - 4 = 248,
+          leaving 4px right breathing room and matching target card width.
+        */}
+        <div className="flex flex-col ml-7 w-[248px]">
+          {/* RFQ pill */}
+          <div className="pt-4 pb-3">
+            <div className="flex items-center gap-2 bg-white rounded-md border border-[hsl(var(--border))] px-3 py-2">
+              <List className="w-4 h-4 text-[hsl(var(--muted-foreground))] shrink-0" />
+              <span className="text-sm font-medium">RFQ {rfqNumber}</span>
+            </div>
+          </div>
+
+          {/* Company name */}
+          <p className="text-base font-semibold pb-3">{companyName ?? "—"}</p>
+
+          {/* FIX 2: Contact card — grey background matching sidebar, equal px-3
+              padding, shadow-sm, full wrapper width (248px). */}
+          <div className="pb-3">
+            <div className="flex items-start justify-between bg-[hsl(210_20%_96%)] rounded-md border border-[#E5E7EB] shadow-sm px-3 py-2.5">
+              <div>
+                <p className="text-sm font-semibold leading-snug">{contactName ?? "—"}</p>
+                <p className="text-xs text-[hsl(var(--muted-foreground))] leading-snug mt-0.5">
+                  {contactEmail ?? "—"}
+                </p>
+              </div>
+              <button
+                type="button"
+                className="text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))] mt-0.5 ml-2 shrink-0"
+              >
+                <Pencil className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </div>
+
+          {/* FIX 3: Revision + Create New RFQ — both h-8 (32px), text-[13px],
+              gap-2, items-center. */}
+          <div className="pb-3 flex items-center gap-2">
+            <select className="h-8 text-[13px] border border-[hsl(var(--border))] rounded-md px-2 bg-white text-[hsl(var(--foreground))]">
+              <option>Revision 1</option>
+            </select>
+            <button
+              type="button"
+              className="h-8 text-[13px] border border-[hsl(var(--border))] rounded-md px-3 bg-white hover:bg-[hsl(var(--accent))] whitespace-nowrap text-[hsl(var(--foreground))]"
+            >
+              Create New RFQ
+            </button>
+          </div>
+
+          {/* Messaging */}
+          <div className="pb-1">
+            <button
+              type="button"
+              className="flex items-center gap-2 w-full py-2 px-2 text-sm text-[hsl(var(--foreground))] hover:bg-[hsl(0_0%_93%)] rounded-md"
+            >
+              <Inbox className="w-4 h-4 text-[hsl(var(--muted-foreground))]" />
+              Messaging
+            </button>
+          </div>
+
+          {/* Timeline */}
+          <div className="pb-3">
+            <button
+              type="button"
+              className="flex items-center gap-2 w-full py-2 px-2 text-sm text-[hsl(var(--foreground))] hover:bg-[hsl(0_0%_93%)] rounded-md"
+            >
+              <Network className="w-4 h-4 text-[hsl(var(--muted-foreground))]" />
+              Timeline
+            </button>
+          </div>
+
+          {/* FIX 1: Workflow stepper
+              - Two-column layout: left col = circle + connector, right col = label + children
+              - Circle: w-5 h-5 (20px) for both active and inactive
+              - Active fill: #2563EB (blue-600), no border
+              - Inactive: white interior, 2px border #D1D5DB
+              - Connector: 2px wide, #D1D5DB, grows to span the full height of each row
+              - Labels: font-medium (500) for all; active = #1F2937, inactive = #9CA3AF
+          */}
+          <div className="pb-4">
+            {steps.map((step, i) => {
+              const isActive = i === 0;
+              const isLast = i === steps.length - 1;
+              return (
+                <div key={step.key} className="flex gap-3">
+                  {/* Left col: circle + connector line */}
+                  <div className="flex flex-col items-center">
+                    <div
+                      className={`w-5 h-5 rounded-full shrink-0 ${
+                        isActive
+                          ? "bg-[#2563EB]"
+                          : "bg-white border-2 border-[#D1D5DB]"
+                      }`}
+                    />
+                    {!isLast && (
+                      <div className="w-[2px] flex-1 min-h-[16px] bg-[#D1D5DB] mt-1" />
+                    )}
+                  </div>
+
+                  {/* Right col: label + optional parts list */}
+                  <div className={`min-w-0 ${isLast ? "pb-0" : "pb-4"}`}>
+                    <p
+                      className={`text-sm font-medium leading-5 ${
+                        isActive ? "text-[#1F2937]" : "text-[#9CA3AF]"
+                      }`}
+                    >
+                      {step.label}
+                    </p>
+                    {step.parts.length > 0 && (
+                      <div className="mt-1 space-y-0.5">
+                        {step.parts.map((part) => (
+                          <button
+                            key={part.id}
+                            type="button"
+                            onClick={() => setSelectedPartId(part.id)}
+                            className={`w-full text-left text-xs px-2 py-1 rounded ${
+                              selectedPartId === part.id
+                                ? "bg-blue-100 text-[#2563EB] font-medium"
+                                : "text-[#1F2937] hover:bg-[hsl(0_0%_93%)]"
+                            }`}
+                          >
+                            {part.partNumber ?? part.description ?? "—"}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </aside>
+
+      {/* Chevron — outside the overflow-hidden aside, not clipped */}
+      <button
+        type="button"
+        onClick={() => setCollapsed((v) => !v)}
+        className={`absolute top-[40%] -translate-y-1/2 z-20 flex items-center justify-center w-6 h-6 rounded-full bg-white border border-[hsl(214_32%_91%)] shadow-sm ${collapsed ? "right-0" : "-right-[12px]"}`}
+      >
+        {collapsed ? (
+          <ChevronRight className="w-4 h-4 text-[hsl(var(--muted-foreground))]" />
+        ) : (
+          <ChevronLeft className="w-4 h-4 text-[hsl(var(--muted-foreground))]" />
+        )}
+      </button>
+    </div>
+  );
+}

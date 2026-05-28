@@ -5,6 +5,7 @@ import { eq, and, count } from "drizzle-orm";
 import { rfqs } from "@uptool/db";
 import { auth } from "@/auth";
 import { Sidebar } from "@/components/sidebar";
+import { SidebarCollapseProvider } from "@/components/sidebar-collapse-context";
 
 interface OrgLayoutProps {
   children: React.ReactNode;
@@ -49,6 +50,7 @@ export default async function OrgLayout({ children, params }: OrgLayoutProps) {
   const newRfqCount = newRfqResult?.count ?? 0;
 
   return (
+    <SidebarCollapseProvider>
     <div className="flex h-screen overflow-hidden">
       <Sidebar
         orgSlug={orgSlug}
@@ -67,5 +69,6 @@ export default async function OrgLayout({ children, params }: OrgLayoutProps) {
       />
       <main className="flex-1 overflow-auto bg-white">{children}</main>
     </div>
+    </SidebarCollapseProvider>
   );
 }

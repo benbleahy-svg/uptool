@@ -1,10 +1,7 @@
-import { redirect } from "next/navigation";
-
-interface Props {
-  params: Promise<{ orgSlug: string; rfqId: string }>;
-}
-
-export default async function RfqDetailPage({ params }: Props) {
-  const { orgSlug, rfqId } = await params;
-  redirect(`/${orgSlug}/rfqs/${rfqId}/thread`);
+export default function RfqDetailPage() {
+  return (
+    <div className="flex items-center justify-center h-full text-sm text-[hsl(var(--muted-foreground))]">
+      Select a section from the sidebar
+    </div>
+  );
 }

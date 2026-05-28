@@ -190,6 +190,10 @@ export const rfqService = {
           assignee: true,
           emailAccount: true,
           attachments: true,
+          parts: {
+            columns: { id: true, partNumber: true, description: true, sortOrder: true },
+            orderBy: (p, { asc }) => [asc(p.sortOrder)],
+          },
           threads: {
             with: {
               messages: {
