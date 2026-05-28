@@ -47,17 +47,12 @@ export function RfqSecondarySidebar({
     <div
       className="relative shrink-0 min-w-0"
       style={{
-        width: collapsed ? "28px" : "280px",
+        width: collapsed ? "44px" : "280px",
         transition: "width 200ms ease-in-out",
       }}
     >
-      <aside className="h-full w-full border-r border-[hsl(var(--border))] bg-[hsl(210_20%_96%)] overflow-hidden">
-        {/*
-          ml-7 (28px): content starts exactly at the collapse boundary so
-          nothing bleeds through the 28px rail. w-[248px]: 280 - 28 - 4 = 248,
-          leaving 4px right breathing room and matching target card width.
-        */}
-        <div className="flex flex-col mx-4">
+      <aside className="h-full w-full border-r border-[hsl(var(--border))] bg-[hsl(210_16%_91%)] overflow-hidden">
+        <div className={`flex flex-col mx-4 transition-opacity duration-150 ${collapsed ? "opacity-0 pointer-events-none" : "opacity-100"}`}>
           {/* RFQ pill */}
           <div className="pt-4 pb-3">
             <Link
@@ -194,7 +189,7 @@ export function RfqSecondarySidebar({
       <button
         type="button"
         onClick={() => setCollapsed((v) => !v)}
-        className={`absolute top-[40%] -translate-y-1/2 z-20 flex items-center justify-center w-6 h-6 rounded-full bg-white border border-[hsl(214_32%_91%)] shadow-sm ${collapsed ? "right-0" : "-right-[12px]"}`}
+        className={`absolute top-[40%] -translate-y-1/2 z-20 flex items-center justify-center w-6 h-6 rounded-full bg-white border border-[hsl(214_32%_91%)] shadow-sm ${collapsed ? "left-1/2 -translate-x-1/2" : "-right-[12px]"}`}
       >
         {collapsed ? (
           <ChevronRight className="w-4 h-4 text-[hsl(var(--muted-foreground))]" />

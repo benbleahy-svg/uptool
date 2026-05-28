@@ -419,7 +419,7 @@ export function RfqOverview({ rfqNumber: _rfqNumber, quantityBreaks, lastEmail, 
       </div>{/* end scrollable */}
 
       {/* Action bar */}
-      <div className="shrink-0 border-t border-[hsl(var(--border))] bg-white px-4 py-3 flex items-center justify-end gap-2">
+      <div className="shrink-0 border-t border-[hsl(210_20%_96%)] bg-[hsl(210_20%_96%)] px-4 py-3 flex items-center justify-end gap-2">
         <button
           type="button"
           className="text-sm px-4 py-2 bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 rounded-md transition-colors font-medium"
