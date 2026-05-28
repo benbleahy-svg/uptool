@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { List, Inbox, Network, Pencil, ChevronLeft, ChevronRight } from "lucide-react";
 import { useSidebarCollapse } from "@/components/sidebar-collapse-context";
 
@@ -12,6 +13,7 @@ interface Part {
 }
 
 interface Props {
+  orgSlug: string;
   rfqNumber: number;
   companyName: string | null;
   contactName: string | null;
@@ -20,6 +22,7 @@ interface Props {
 }
 
 export function RfqSecondarySidebar({
+  orgSlug,
   rfqNumber,
   companyName,
   contactName,
@@ -27,7 +30,7 @@ export function RfqSecondarySidebar({
   parts,
 }: Props) {
   const { collapsed, setCollapsed } = useSidebarCollapse();
-  const [selectedPartId, setSelectedPartId] = useState<string | null>(parts[0]?.id ?? null);
+  const [selectedPartId, setSelectedPartId] = useState<string | null>(null);
 
   // Reset both sidebars to expanded when leaving the RFQ detail page
   useEffect(() => {
@@ -54,13 +57,16 @@ export function RfqSecondarySidebar({
           nothing bleeds through the 28px rail. w-[248px]: 280 - 28 - 4 = 248,
           leaving 4px right breathing room and matching target card width.
         */}
-        <div className="flex flex-col ml-7 w-[248px]">
+        <div className="flex flex-col mx-4">
           {/* RFQ pill */}
           <div className="pt-4 pb-3">
-            <div className="flex items-center gap-2 bg-white rounded-md border border-[hsl(var(--border))] px-3 py-2">
-              <List className="w-4 h-4 text-[hsl(var(--muted-foreground))] shrink-0" />
-              <span className="text-sm font-medium">RFQ {rfqNumber}</span>
-            </div>
+            <Link
+              href={`/${orgSlug}/rfqs/${rfqNumber}`}
+              className="flex items-center gap-2 bg-blue-50 rounded-md border border-blue-200 px-3 py-2 hover:bg-blue-100 transition-colors"
+            >
+              <List className="w-4 h-4 text-[#1F2937] shrink-0" />
+              <span className="text-sm font-medium text-[#1F2937]">RFQ {rfqNumber}</span>
+            </Link>
           </div>
 
           {/* Company name */}
@@ -93,7 +99,7 @@ export function RfqSecondarySidebar({
             </select>
             <button
               type="button"
-              className="h-8 text-[13px] border border-[hsl(var(--border))] rounded-md px-3 bg-white hover:bg-[hsl(var(--accent))] whitespace-nowrap text-[hsl(var(--foreground))]"
+              className="h-8 flex-1 text-[13px] border border-[hsl(var(--border))] rounded-md px-3 bg-white hover:bg-[hsl(var(--accent))] whitespace-nowrap text-[hsl(var(--foreground))]"
             >
               Create New RFQ
             </button>

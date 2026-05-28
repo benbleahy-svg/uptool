@@ -26,6 +26,7 @@ export default async function RfqDetailLayout({ children, params }: Props) {
   return (
     <div className="flex h-full">
       <RfqSecondarySidebar
+        orgSlug={orgSlug}
         rfqNumber={rfq.rfqNumber}
         companyName={rfq.customer?.name ?? null}
         contactName={rfq.contact?.name ?? null}
