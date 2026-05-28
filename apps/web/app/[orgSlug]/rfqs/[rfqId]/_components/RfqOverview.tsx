@@ -298,16 +298,16 @@ export function RfqOverview({ rfqNumber: _rfqNumber, quantityBreaks, lastEmail, 
             are pixel-perfect without any placeholder hacks. */}
         <section className="bg-white rounded-lg border border-[hsl(var(--border))]">
           {/* Header */}
-          <div className="grid items-center px-4 py-3 border-b border-[hsl(var(--border))] gap-x-3 grid-cols-[20px_104px_40px_2fr_90px_1fr]">
+          <div className="grid items-center px-4 py-3 border-b border-[hsl(var(--border))] gap-x-3 grid-cols-[20px_104px_72px_2fr_180px_1fr]">
             {/* cols 1-4 merged: title + add button */}
             <div className="col-span-4 flex items-center gap-2">
               <h2 className="text-[14px] font-semibold text-[#1F2937]">Parts</h2>
               <button
                 type="button"
                 onClick={() => console.log("TODO: add part")}
-                className="flex items-center justify-center w-8 h-8 rounded hover:bg-[#F3F4F6] transition-colors"
+                className="flex items-center justify-center w-7 h-7 rounded border border-[hsl(var(--border))] bg-white hover:bg-[#F3F4F6] transition-colors shadow-sm"
               >
-                <Plus style={{ width: 18, height: 18 }} className="text-[#6B7280]" />
+                <Plus style={{ width: 14, height: 14 }} className="text-[#6B7280]" />
               </button>
             </div>
             {/* col 5: Quantities label */}
@@ -355,10 +355,10 @@ export function RfqOverview({ rfqNumber: _rfqNumber, quantityBreaks, lastEmail, 
                     key={part.id}
                     type="button"
                     onClick={() => router.push(`/${orgSlug}/rfqs/${rfqId}?part=${part.id}`)}
-                    className="w-full grid items-center px-4 py-3 text-left hover:bg-[hsl(var(--accent))] transition-colors gap-x-3 grid-cols-[20px_104px_40px_2fr_90px_1fr]"
+                    className="w-full grid items-start px-4 py-3 text-left hover:bg-[hsl(var(--accent))] transition-colors gap-x-3 grid-cols-[20px_104px_72px_2fr_180px_1fr]"
                   >
                     {/* col 1: row number */}
-                    <span className="text-right text-[13px] text-[#9CA3AF]">{index + 1}</span>
+                    <span className="text-right text-[13px] text-[#9CA3AF] pt-[5px]">{index + 1}</span>
 
                     {/* col 2: process pill */}
                     <div>
@@ -370,12 +370,12 @@ export function RfqOverview({ rfqNumber: _rfqNumber, quantityBreaks, lastEmail, 
                     </div>
 
                     {/* col 3: thumbnail placeholder */}
-                    <div className="w-10 h-10 rounded border border-[hsl(var(--border))] bg-[hsl(210_20%_96%)] flex items-center justify-center">
-                      <Box className="w-5 h-5 text-[hsl(var(--muted-foreground))]" />
+                    <div className="w-[72px] h-[72px] rounded border border-[hsl(var(--border))] bg-[hsl(210_20%_96%)] flex items-center justify-center">
+                      <Box className="w-9 h-9 text-[hsl(var(--muted-foreground))]" />
                     </div>
 
                     {/* col 4: identification block */}
-                    <div className="min-w-0 overflow-hidden">
+                    <div className="min-w-0 overflow-hidden pt-1">
                       <div className="flex items-baseline gap-2">
                         <span className="text-[14px] font-semibold text-[#1F2937]">
                           {part.partNumber ?? "—"}
@@ -385,7 +385,7 @@ export function RfqOverview({ rfqNumber: _rfqNumber, quantityBreaks, lastEmail, 
                         )}
                       </div>
                       {part.description && (
-                        <p className="text-[13px] text-[#9CA3AF] truncate mt-0.5">
+                        <p className="text-[13px] text-[#9CA3AF] truncate mt-2">
                           {part.description}
                         </p>
                       )}
