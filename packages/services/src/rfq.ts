@@ -198,6 +198,7 @@ export const rfqService = {
             with: {
               messages: {
                 orderBy: (m, { asc }) => [asc(m.receivedAt)],
+                with: { attachments: true },
               },
             },
           },
@@ -224,6 +225,7 @@ export const rfqService = {
             with: {
               messages: {
                 orderBy: (m, { asc }) => [asc(m.receivedAt)],
+                with: { attachments: true },
               },
             },
           },

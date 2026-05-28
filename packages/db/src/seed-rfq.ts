@@ -93,7 +93,7 @@ async function seedRfq() {
       .returning();
     if (!thread) throw new Error("Failed to insert email thread");
 
-    await tx.insert(schema.emailMessages).values({
+    const [inboundMsg] = await tx.insert(schema.emailMessages).values({
       orgId: org.id,
       threadId: thread.id,
       providerMessageId: "AAMkADVogt2026052701-001",
@@ -133,6 +133,43 @@ Industriestraße 14
 Tel.: +49 89 3105-2840
 m.steinberg@vogt-praezision.de`,
       receivedAt,
+    }).returning();
+    if (!inboundMsg) throw new Error("Failed to insert inbound message");
+
+    const outboundAt = new Date("2026-05-27T11:42:00Z");
+    const [outboundMsg] = await tx.insert(schema.emailMessages).values({
+      orgId: org.id,
+      threadId: thread.id,
+      providerMessageId: "AAMkADVogt2026052701-002",
+      direction: "outbound",
+      fromEmail: "rfq+acme@in.toolup.de",
+      fromName: "Acme GmbH",
+      toEmails: ["m.steinberg@vogt-praezision.de"],
+      subject: "Re: Anfrage Baugruppe Hydraulikverteiler – 3 Pos.",
+      bodyText: `Dear Mr. Steinberg,
+
+Thank you for your inquiry. We have reviewed your request and are pleased to confirm we can manufacture all three positions.
+
+We will prepare a detailed quotation for quantities 1 / 10 / 100 pcs and send it to you within the next 2–3 business days.
+
+Please note we will require clarification on the surface finish specification for Pos. 1 (VB-40) — could you confirm whether anodising is required?
+
+Best regards,
+Acme GmbH`,
+      status: "sent",
+      receivedAt: outboundAt,
+    }).returning();
+    if (!outboundMsg) throw new Error("Failed to insert outbound message");
+
+    await tx.insert(schema.attachments).values({
+      orgId: org.id,
+      rfqId: rfq.id,
+      messageId: outboundMsg.id,
+      filename: "Acme_RFQ1004_Acknowledgement.pdf",
+      contentType: "application/pdf",
+      sizeBytes: 54_200,
+      storageKey: "acme/attachments/rfq1004-acknowledgement.pdf",
+      category: "other",
     });
 
     // Parts (English)

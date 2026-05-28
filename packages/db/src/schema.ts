@@ -285,8 +285,11 @@ export const emailMessages = pgTable(
     fromEmail: text("from_email"),
     fromName: text("from_name"),
     toEmails: text("to_emails").array(),
+    ccEmails: text("cc_emails").array(),
+    bccEmails: text("bcc_emails").array(),
     subject: text("subject"),
     bodyText: text("body_text"),
+    status: text("status"), // outbound: 'sent' | 'draft' | 'failed'; inbound: null
     receivedAt: timestamp("received_at", { withTimezone: true }).notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
@@ -400,9 +403,10 @@ export const emailThreadsRelations = relations(emailThreads, ({ one, many }) => 
   messages: many(emailMessages),
 }));
 
-export const emailMessagesRelations = relations(emailMessages, ({ one }) => ({
+export const emailMessagesRelations = relations(emailMessages, ({ one, many }) => ({
   org: one(orgs, { fields: [emailMessages.orgId], references: [orgs.id] }),
   thread: one(emailThreads, { fields: [emailMessages.threadId], references: [emailThreads.id] }),
+  attachments: many(attachments),
 }));
 
 export const attachmentsRelations = relations(attachments, ({ one }) => ({

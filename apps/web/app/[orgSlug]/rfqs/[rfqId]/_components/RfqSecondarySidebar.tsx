@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { List, Inbox, Network, Pencil, ChevronLeft, ChevronRight, Download } from "lucide-react";
 import { useSidebarCollapse } from "@/components/sidebar-collapse-context";
 
@@ -31,6 +32,8 @@ export function RfqSecondarySidebar({
 }: Props) {
   const { collapsed, setCollapsed } = useSidebarCollapse();
   const [selectedPartId, setSelectedPartId] = useState<string | null>(null);
+  const pathname = usePathname();
+  const isMessaging = pathname.endsWith("/messaging");
 
   // Reset both sidebars to expanded when leaving the RFQ detail page
   useEffect(() => {
@@ -102,13 +105,13 @@ export function RfqSecondarySidebar({
 
           {/* Messaging */}
           <div className="pb-1">
-            <button
-              type="button"
-              className="flex items-center gap-2 w-full py-2 px-2 text-sm text-[hsl(var(--foreground))] hover:bg-[hsl(0_0%_93%)] rounded-md"
+            <Link
+              href={`/${orgSlug}/rfqs/${rfqNumber}/messaging`}
+              className={`flex items-center gap-2 w-full py-2 px-2 text-sm rounded-md transition-colors ${isMessaging ? "bg-[#F3F4F6] text-[#1F2937] font-medium" : "text-[hsl(var(--foreground))] hover:bg-[hsl(0_0%_93%)]"}`}
             >
-              <Inbox className="w-4 h-4 text-[hsl(var(--muted-foreground))]" />
+              <Inbox className={`w-4 h-4 ${isMessaging ? "text-[#1F2937]" : "text-[hsl(var(--muted-foreground))]"}`} />
               Messaging
-            </button>
+            </Link>
           </div>
 
           {/* Timeline */}
