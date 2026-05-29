@@ -1,7 +1,7 @@
-import { notFound, redirect } from "next/navigation";
 import { auth } from "@/auth";
-import { db } from "@uptool/db";
 import { resolveRfq } from "@/lib/resolve-rfq";
+import { db } from "@uptool/db";
+import { notFound, redirect } from "next/navigation";
 import { RfqSecondarySidebar } from "./_components/RfqSecondarySidebar";
 
 interface Props {
@@ -27,15 +27,14 @@ export default async function RfqDetailLayout({ children, params }: Props) {
     <div className="flex h-full">
       <RfqSecondarySidebar
         orgSlug={orgSlug}
+        rfqId={rfq.id}
         rfqNumber={rfq.rfqNumber}
         companyName={rfq.customer?.name ?? null}
         contactName={rfq.contact?.name ?? null}
         contactEmail={rfq.contact?.email ?? null}
         parts={rfq.parts ?? []}
       />
-      <div className="flex-1 min-w-0 overflow-auto bg-[hsl(210_20%_96%)]">
-        {children}
-      </div>
+      <div className="flex-1 min-w-0 overflow-auto bg-[hsl(210_20%_96%)]">{children}</div>
     </div>
   );
 }

@@ -1,24 +1,28 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { format, formatDistanceToNow } from "date-fns";
 import {
-  FileText,
   Box,
-  Table2,
   File,
+  FileText,
+  Inbox,
+  Info,
   LayoutGrid,
   List,
-  Search,
-  Upload,
-  Plus,
-  Info,
-  X,
-  Pencil,
   Mail,
-  Inbox,
+  Pencil,
+  Plus,
+  Search,
+  Table2,
+  Upload,
+  X,
 } from "lucide-react";
-import { formatDistanceToNow, format } from "date-fns";
+import dynamic from "next/dynamic";
+import { useRouter } from "next/navigation";
+import { useState } from "react";
+import { CadThumb } from "./cad-thumb";
+
+const PdfThumb = dynamic(() => import("./pdf-thumb").then((m) => m.PdfThumb), { ssr: false });
 
 type Category = "drawing" | "cad" | "bom" | "other";
 
@@ -69,15 +73,36 @@ const PROCESS_LABEL: Record<string, string> = {
 
 type IconComponent = React.ComponentType<{ className?: string; style?: React.CSSProperties }>;
 
-const CAT: Record<Category, { label: string; plural: string; short: string; Icon: IconComponent; color: string }> = {
-  drawing: { label: "Drawing", plural: "Drawings", short: "Draw", Icon: FileText, color: "#6366F1" },
+const CAT: Record<
+  Category,
+  { label: string; plural: string; short: string; Icon: IconComponent; color: string }
+> = {
+  drawing: {
+    label: "Drawing",
+    plural: "Drawings",
+    short: "Draw",
+    Icon: FileText,
+    color: "#6366F1",
+  },
   cad: { label: "CAD", plural: "CAD", short: "CAD", Icon: Box, color: "#10B981" },
   bom: { label: "BOM", plural: "BOM", short: "BOM", Icon: Table2, color: "#F59E0B" },
   other: { label: "Other", plural: "Other", short: "Other", Icon: File, color: "#6B7280" },
 };
 
+function fileKind(a: Attachment): "pdf" | "cad" | "other" {
+  if (a.category === "cad") return "cad";
+  return a.filename.toLowerCase().endsWith(".pdf") ? "pdf" : "other";
+}
 
-export function RfqOverview({ rfqNumber: _rfqNumber, quantityBreaks, lastEmail, attachments, parts, orgSlug, rfqId }: Props) {
+export function RfqOverview({
+  rfqNumber: _rfqNumber,
+  quantityBreaks,
+  lastEmail,
+  attachments,
+  parts,
+  orgSlug,
+  rfqId,
+}: Props) {
   const router = useRouter();
   const [showHint, setShowHint] = useState(true);
   const [activeCategories, setActiveCategories] = useState<Set<string>>(
@@ -98,18 +123,15 @@ export function RfqOverview({ rfqNumber: _rfqNumber, quantityBreaks, lastEmail, 
 
   const filtered = attachments.filter(
     (a) =>
-      activeCategories.has(a.category) &&
-      a.filename.toLowerCase().includes(search.toLowerCase()),
+      activeCategories.has(a.category) && a.filename.toLowerCase().includes(search.toLowerCase()),
   );
 
   return (
     <div className="flex flex-col h-full">
       {/* Scrollable content */}
       <div className="flex-1 overflow-y-auto overflow-x-hidden p-4">
-
         {/* Top row: Last email + Files side by side */}
         <div className="flex gap-3 mb-3 h-[288px]">
-
           {/* Last email */}
           <section className="flex-1 min-w-0 flex flex-col bg-white rounded-lg border border-[#E5E7EB]">
             <div className="flex-1 overflow-auto p-4">
@@ -169,14 +191,19 @@ export function RfqOverview({ rfqNumber: _rfqNumber, quantityBreaks, lastEmail, 
               {/* Title */}
               <div className="flex items-center gap-1.5 shrink-0">
                 <FileText className="w-4 h-4 text-[#1F2937]" />
-                <span className="text-[14px] font-semibold text-[#1F2937] whitespace-nowrap">{attachments.length} Files</span>
+                <span className="text-[14px] font-semibold text-[#1F2937] whitespace-nowrap">
+                  {attachments.length} Files
+                </span>
               </div>
               {/* Category checkboxes — flex-1 so they fill remaining space; overflow-hidden clips if panel is narrow */}
               <div className="flex items-center gap-2.5 flex-1 min-w-0 overflow-hidden">
                 {(["drawing", "cad", "bom", "other"] as Category[]).map((cat) => {
                   const count = attachments.filter((a) => a.category === cat).length;
                   return (
-                    <label key={cat} className="flex items-center gap-1 cursor-pointer select-none shrink-0">
+                    <label
+                      key={cat}
+                      className="flex items-center gap-1 cursor-pointer select-none shrink-0"
+                    >
                       <input
                         type="checkbox"
                         checked={activeCategories.has(cat)}
@@ -184,8 +211,7 @@ export function RfqOverview({ rfqNumber: _rfqNumber, quantityBreaks, lastEmail, 
                         className="w-3 h-3 rounded accent-[hsl(var(--primary))]"
                       />
                       <span className="text-[11px] font-bold text-[#374151] whitespace-nowrap">
-                        {CAT[cat].short}{" "}
-                        <span className="font-bold text-[#1F2937]">({count})</span>
+                        {CAT[cat].short} <span className="font-bold text-[#1F2937]">({count})</span>
                       </span>
                     </label>
                   );
@@ -240,6 +266,7 @@ export function RfqOverview({ rfqNumber: _rfqNumber, quantityBreaks, lastEmail, 
                     const cfg = CAT[a.category as Category] ?? CAT.other;
                     const Icon = cfg.Icon;
                     const ext = a.filename.split(".").pop()?.toUpperCase() ?? "FILE";
+                    const kind = fileKind(a);
                     return (
                       <div
                         key={a.id}
@@ -247,16 +274,24 @@ export function RfqOverview({ rfqNumber: _rfqNumber, quantityBreaks, lastEmail, 
                         onMouseEnter={() => setHoveredPartId(a.partId)}
                         onMouseLeave={() => setHoveredPartId(null)}
                       >
-                        {/* Placeholder area */}
-                        <div className="h-[120px] bg-[#F3F4F6] flex flex-col items-center justify-center gap-2 shrink-0">
-                          <Icon style={{ width: 48, height: 48, color: cfg.color }} />
-                          <span
-                            className="text-[10px] font-semibold px-1.5 py-0.5 rounded"
-                            style={{ backgroundColor: `${cfg.color}1a`, color: cfg.color }}
-                          >
-                            {ext}
-                          </span>
-                        </div>
+                        {/* Preview area */}
+                        {kind === "pdf" ? (
+                          <div className="flex h-[120px] shrink-0 items-center justify-center overflow-hidden bg-white">
+                            <PdfThumb url={`/api/attachments/${a.id}`} height={120} />
+                          </div>
+                        ) : kind === "cad" ? (
+                          <CadThumb className="h-[120px] shrink-0" />
+                        ) : (
+                          <div className="h-[120px] bg-[#F3F4F6] flex flex-col items-center justify-center gap-2 shrink-0">
+                            <Icon style={{ width: 48, height: 48, color: cfg.color }} />
+                            <span
+                              className="text-[10px] font-semibold px-1.5 py-0.5 rounded"
+                              style={{ backgroundColor: `${cfg.color}1a`, color: cfg.color }}
+                            >
+                              {ext}
+                            </span>
+                          </div>
+                        )}
                         {/* Info area */}
                         <div className="px-2 py-1.5 flex flex-col gap-0.5">
                           <p className="text-[11px] font-bold truncate">{a.filename}</p>
@@ -280,7 +315,10 @@ export function RfqOverview({ rfqNumber: _rfqNumber, quantityBreaks, lastEmail, 
                         onMouseEnter={() => setHoveredPartId(a.partId)}
                         onMouseLeave={() => setHoveredPartId(null)}
                       >
-                        <Icon style={{ width: 20, height: 20, color: cfg.color }} className="shrink-0" />
+                        <Icon
+                          style={{ width: 20, height: 20, color: cfg.color }}
+                          className="shrink-0"
+                        />
                         <p className="text-xs font-bold truncate flex-1">{a.filename}</p>
                         <span className="text-[10px] text-[hsl(var(--muted-foreground))] shrink-0 capitalize">
                           {cfg.label}
@@ -353,17 +391,21 @@ export function RfqOverview({ rfqNumber: _rfqNumber, quantityBreaks, lastEmail, 
               </p>
             ) : (
               parts.map((part, index) => {
-                const processLabel = part.processType ? (PROCESS_LABEL[part.processType] ?? null) : null;
+                const processLabel = part.processType
+                  ? (PROCESS_LABEL[part.processType] ?? null)
+                  : null;
                 const partFiles = attachments.filter((a) => a.partId === part.id);
                 return (
                   <button
                     key={part.id}
                     type="button"
-                    onClick={() => router.push(`/${orgSlug}/rfqs/${rfqId}?part=${part.id}`)}
+                    onClick={() => router.push(`/${orgSlug}/rfqs/${rfqId}/estimate/${part.id}`)}
                     className={`w-full grid items-start px-4 py-3 text-left transition-colors gap-x-3 grid-cols-[20px_104px_72px_2fr_180px_1fr] ${hoveredPartId === part.id ? "bg-blue-50" : "hover:bg-[hsl(var(--accent))]"}`}
                   >
                     {/* col 1: row number */}
-                    <span className="text-right text-[13px] text-[#9CA3AF] pt-[5px]">{index + 1}</span>
+                    <span className="text-right text-[13px] text-[#9CA3AF] pt-[5px]">
+                      {index + 1}
+                    </span>
 
                     {/* col 2: process pill */}
                     <div>
@@ -374,9 +416,9 @@ export function RfqOverview({ rfqNumber: _rfqNumber, quantityBreaks, lastEmail, 
                       )}
                     </div>
 
-                    {/* col 3: thumbnail placeholder */}
-                    <div className="w-[72px] h-[72px] rounded border border-[hsl(var(--border))] bg-[hsl(210_20%_96%)] flex items-center justify-center">
-                      <Box className="w-9 h-9 text-[hsl(var(--muted-foreground))]" />
+                    {/* col 3: CAD thumbnail */}
+                    <div className="h-[72px] w-[72px] overflow-hidden rounded border border-[hsl(var(--border))]">
+                      <CadThumb className="h-full w-full" />
                     </div>
 
                     {/* col 4: identification block */}
@@ -408,8 +450,12 @@ export function RfqOverview({ rfqNumber: _rfqNumber, quantityBreaks, lastEmail, 
                         const Icon = cfg.Icon;
                         return (
                           <div key={f.id} className="flex items-center gap-1.5 min-w-0">
-                            <Icon style={{ width: 13, height: 13, color: cfg.color, flexShrink: 0 }} />
-                            <span className="text-[12px] text-[#374151] truncate">{f.filename}</span>
+                            <Icon
+                              style={{ width: 13, height: 13, color: cfg.color, flexShrink: 0 }}
+                            />
+                            <span className="text-[12px] text-[#374151] truncate">
+                              {f.filename}
+                            </span>
                           </div>
                         );
                       })}
@@ -420,8 +466,8 @@ export function RfqOverview({ rfqNumber: _rfqNumber, quantityBreaks, lastEmail, 
             )}
           </div>
         </section>
-
-      </div>{/* end scrollable */}
+      </div>
+      {/* end scrollable */}
 
       {/* Action bar */}
       <div className="shrink-0 border-t border-[hsl(var(--border))] bg-white px-4 py-3 flex items-center justify-end gap-2">

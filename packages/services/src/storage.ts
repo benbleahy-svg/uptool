@@ -34,6 +34,14 @@ export const storageService = {
     );
   },
 
+  async download(key: string): Promise<{ body: Buffer; contentType: string }> {
+    const client = getClient();
+    const res = await client.send(new GetObjectCommand({ Bucket: bucket(), Key: key }));
+    if (!res.Body) throw new Error(`No object body for key: ${key}`);
+    const bytes = await res.Body.transformToByteArray();
+    return { body: Buffer.from(bytes), contentType: res.ContentType ?? "application/octet-stream" };
+  },
+
   async presignedUrl(key: string, expiresInSeconds = 3600): Promise<string> {
     const client = getClient();
     const cmd = new GetObjectCommand({ Bucket: bucket(), Key: key });

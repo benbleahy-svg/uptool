@@ -1,10 +1,20 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useSidebarCollapse } from "@/components/sidebar-collapse-context";
+import { type PartStatus, usePartCompletion } from "@/lib/quoting/partCompletion";
+import {
+  Check,
+  ChevronLeft,
+  ChevronRight,
+  Download,
+  Inbox,
+  List,
+  Network,
+  Pencil,
+} from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { List, Inbox, Network, Pencil, ChevronLeft, ChevronRight, Download } from "lucide-react";
-import { useSidebarCollapse } from "@/components/sidebar-collapse-context";
+import { useEffect } from "react";
 
 interface Part {
   id: string;
@@ -15,6 +25,7 @@ interface Part {
 
 interface Props {
   orgSlug: string;
+  rfqId: string;
   rfqNumber: number;
   companyName: string | null;
   contactName: string | null;
@@ -24,16 +35,26 @@ interface Props {
 
 export function RfqSecondarySidebar({
   orgSlug,
+  rfqId,
   rfqNumber,
   companyName,
   contactName,
   contactEmail,
   parts,
 }: Props) {
+  const completion = usePartCompletion(rfqId);
   const { collapsed, setCollapsed } = useSidebarCollapse();
-  const [selectedPartId, setSelectedPartId] = useState<string | null>(null);
   const pathname = usePathname();
   const isMessaging = pathname.endsWith("/messaging");
+  const onQuote = pathname.endsWith("/quote");
+
+  // The Quote stage unlocks once every part is finalised (Complete or No Bid).
+  const allFinalised =
+    parts.length > 0 &&
+    parts.every((p) => {
+      const s = completion[p.id];
+      return s === "completed" || s === "noBid";
+    });
 
   // Reset both sidebars to expanded when leaving the RFQ detail page
   useEffect(() => {
@@ -55,7 +76,9 @@ export function RfqSecondarySidebar({
       }}
     >
       <aside className="h-full w-full border-r border-[hsl(var(--border))] bg-[hsl(210_16%_91%)] overflow-hidden">
-        <div className={`flex flex-col mx-4 h-full transition-opacity duration-150 ${collapsed ? "opacity-0 pointer-events-none" : "opacity-100"}`}>
+        <div
+          className={`flex flex-col mx-4 h-full transition-opacity duration-150 ${collapsed ? "opacity-0 pointer-events-none" : "opacity-100"}`}
+        >
           {/* RFQ pill */}
           <div className="pt-4 pb-3">
             <Link
@@ -109,7 +132,9 @@ export function RfqSecondarySidebar({
               href={`/${orgSlug}/rfqs/${rfqNumber}/messaging`}
               className={`flex items-center gap-2 w-full py-2 px-2 text-sm rounded-md transition-colors ${isMessaging ? "bg-[#F3F4F6] text-[#1F2937] font-medium" : "text-[hsl(var(--foreground))] hover:bg-[hsl(0_0%_93%)]"}`}
             >
-              <Inbox className={`w-4 h-4 ${isMessaging ? "text-[#1F2937]" : "text-[hsl(var(--muted-foreground))]"}`} />
+              <Inbox
+                className={`w-4 h-4 ${isMessaging ? "text-[#1F2937]" : "text-[hsl(var(--muted-foreground))]"}`}
+              />
               Messaging
             </Link>
           </div>
@@ -135,7 +160,8 @@ export function RfqSecondarySidebar({
           */}
           <div className="pb-4">
             {steps.map((step, i) => {
-              const isActive = i === 0;
+              const isActive =
+                step.key === "quote" ? onQuote : step.key === "estimate" ? !onQuote : false;
               const isLast = i === steps.length - 1;
               return (
                 <div key={step.key} className="flex gap-3">
@@ -143,41 +169,62 @@ export function RfqSecondarySidebar({
                   <div className="flex flex-col items-center">
                     <div
                       className={`w-5 h-5 rounded-full shrink-0 ${
-                        isActive
-                          ? "bg-[#2563EB]"
-                          : "bg-white border-2 border-[#D1D5DB]"
+                        isActive ? "bg-[#2563EB]" : "bg-white border-2 border-[#D1D5DB]"
                       }`}
                     />
-                    {!isLast && (
-                      <div className="w-[2px] flex-1 min-h-[16px] bg-[#D1D5DB] mt-1" />
-                    )}
+                    {!isLast && <div className="w-[2px] flex-1 min-h-[16px] bg-[#D1D5DB] mt-1" />}
                   </div>
 
                   {/* Right col: label + optional parts list */}
                   <div className={`min-w-0 ${isLast ? "pb-0" : "pb-4"}`}>
-                    <p
-                      className={`text-sm font-medium leading-5 ${
-                        isActive ? "text-[#1F2937]" : "text-[#9CA3AF]"
-                      }`}
-                    >
-                      {step.label}
-                    </p>
+                    {step.key === "quote" ? (
+                      allFinalised ? (
+                        <Link
+                          href={`/${orgSlug}/rfqs/${rfqNumber}/quote`}
+                          className={`text-sm font-medium leading-5 ${
+                            isActive ? "text-[#1F2937]" : "text-[#2563EB] hover:underline"
+                          }`}
+                        >
+                          {step.label}
+                        </Link>
+                      ) : (
+                        <p
+                          title="Complete or No-Bid every part to create a quote"
+                          className="text-sm font-medium leading-5 text-[#9CA3AF] cursor-not-allowed"
+                        >
+                          {step.label}
+                        </p>
+                      )
+                    ) : (
+                      <p
+                        className={`text-sm font-medium leading-5 ${
+                          isActive ? "text-[#1F2937]" : "text-[#9CA3AF]"
+                        }`}
+                      >
+                        {step.label}
+                      </p>
+                    )}
                     {step.parts.length > 0 && (
                       <div className="mt-1 space-y-0.5">
-                        {step.parts.map((part) => (
-                          <button
-                            key={part.id}
-                            type="button"
-                            onClick={() => setSelectedPartId(part.id)}
-                            className={`w-full text-left text-xs px-2 py-1 rounded ${
-                              selectedPartId === part.id
-                                ? "bg-blue-100 text-[#2563EB] font-medium"
-                                : "text-[#1F2937] hover:bg-[hsl(0_0%_93%)]"
-                            }`}
-                          >
-                            {part.partNumber ?? part.description ?? "—"}
-                          </button>
-                        ))}
+                        {step.parts.map((part) => {
+                          const active = pathname.includes(`/estimate/${part.id}`);
+                          return (
+                            <Link
+                              key={part.id}
+                              href={`/${orgSlug}/rfqs/${rfqNumber}/estimate/${part.id}`}
+                              className={`flex w-full items-center gap-1.5 text-left text-xs px-2 py-1 rounded ${
+                                active
+                                  ? "bg-blue-100 text-[#2563EB] font-medium"
+                                  : "text-[#1F2937] hover:bg-[hsl(0_0%_93%)]"
+                              }`}
+                            >
+                              <PartStatusDot status={completion[part.id]} />
+                              <span className="truncate">
+                                {part.partNumber ?? part.description ?? "—"}
+                              </span>
+                            </Link>
+                          );
+                        })}
                       </div>
                     )}
                   </div>
@@ -214,4 +261,22 @@ export function RfqSecondarySidebar({
       </button>
     </div>
   );
+}
+
+// Completion indicator shown left of each part: blue tick when completed,
+// dashed grey circle when no-bid, empty slot otherwise (keeps names aligned).
+function PartStatusDot({ status }: { status: PartStatus | undefined }) {
+  if (status === "completed") {
+    return (
+      <span className="grid h-4 w-4 shrink-0 place-items-center rounded-full bg-[#2563EB] text-white">
+        <Check className="h-2.5 w-2.5" />
+      </span>
+    );
+  }
+  if (status === "noBid") {
+    return (
+      <span className="h-3.5 w-3.5 shrink-0 rounded-full border-2 border-dashed border-gray-400" />
+    );
+  }
+  return <span className="h-4 w-4 shrink-0" />;
 }

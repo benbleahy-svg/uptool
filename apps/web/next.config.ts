@@ -7,6 +7,15 @@ const config: NextConfig = {
   experimental: {
     authInterrupts: true,
   },
+  // react-pdf pulls in the optional native `canvas` package (Node-only); stop
+  // webpack from trying to bundle it for the browser.
+  webpack: (webpackConfig) => {
+    webpackConfig.resolve.alias = {
+      ...webpackConfig.resolve.alias,
+      canvas: false,
+    };
+    return webpackConfig;
+  },
   async headers() {
     return [
       {
@@ -16,11 +25,14 @@ const config: NextConfig = {
             key: "Content-Security-Policy",
             value: [
               "default-src 'self'",
-              "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
+              // jsdelivr + blob: required by online-3d-viewer, which loads the
+              // occt-import-js (STEP) parser and a blob Worker from the CDN.
+              "script-src 'self' 'unsafe-inline' 'unsafe-eval' blob: https://cdn.jsdelivr.net",
+              "worker-src 'self' blob:",
               "style-src 'self' 'unsafe-inline'",
-              "img-src 'self' data: https:",
+              "img-src 'self' data: blob: https:",
               "font-src 'self'",
-              "connect-src 'self'",
+              "connect-src 'self' https://cdn.jsdelivr.net",
               "frame-ancestors 'none'",
             ].join("; "),
           },
