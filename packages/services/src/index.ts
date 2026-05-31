@@ -14,6 +14,8 @@ export { quoteService } from "./quote";
 export type { CreateQuoteInput } from "./quote";
 export { quoteTemplateService } from "./quote-template";
 export type { QuoteTemplateInput, LegalForm } from "./quote-template";
+export { emailTemplateService, DEFAULT_EMAIL_TEMPLATES } from "./email-template";
+export type { EmailTemplateEntry, EmailTemplateKey, EmailTemplates } from "./email-template";
 export { replyService } from "./reply";
 export type { RecordOutboundInput } from "./reply";
 export { templateService } from "./template";

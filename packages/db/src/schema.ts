@@ -683,3 +683,34 @@ export const quoteTemplates = pgTable(
 export const quoteTemplatesRelations = relations(quoteTemplates, ({ one }) => ({
   org: one(orgs, { fields: [quoteTemplates.orgId], references: [orgs.id] }),
 }));
+
+// ─── Email templates ─────────────────────────────────────────────────────────
+// One row per org. `templates` is a map keyed by template type (e.g. "decline");
+// only the decline template is wired up now, but the jsonb shape lets us add
+// more (quote cover email, follow-ups) later without a migration.
+export interface EmailTemplateEntry {
+  subject: string;
+  body: string;
+}
+
+export const emailTemplates = pgTable(
+  "email_templates",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id")
+      .notNull()
+      .unique()
+      .references(() => orgs.id, { onDelete: "cascade" }),
+    templates: jsonb("templates")
+      .$type<Record<string, EmailTemplateEntry>>()
+      .notNull()
+      .default(sql`'{}'::jsonb`),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("idx_email_templates_org").on(t.orgId)],
+);
+
+export const emailTemplatesRelations = relations(emailTemplates, ({ one }) => ({
+  org: one(orgs, { fields: [emailTemplates.orgId], references: [orgs.id] }),
+}));

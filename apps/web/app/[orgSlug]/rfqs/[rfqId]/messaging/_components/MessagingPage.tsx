@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { format } from "date-fns";
 import {
   Plus,
@@ -16,6 +16,7 @@ import {
   Trash2,
   Send,
   ChevronDown,
+  X,
 } from "lucide-react";
 
 interface Attachment {
@@ -36,10 +37,21 @@ interface Message {
   attachments: Attachment[];
 }
 
+interface DeclineDraft {
+  to: string[];
+  subject: string;
+  body: string;
+}
+
 interface Props {
   subject: string | null;
   contactEmail: string | null;
   messages: Message[];
+  orgSlug: string;
+  rfqLabel: number;
+  // When set (arrived via ?draft=decline), the composer is pre-filled and a
+  // confirm-to-send prompt is shown. null = normal messaging view.
+  declineDraft?: DeclineDraft | null;
 }
 
 
@@ -123,11 +135,61 @@ function MessageBubble({ message, className }: { message: Message; className?: s
   );
 }
 
-export function MessagingPage({ subject, contactEmail, messages }: Props) {
-  const [body, setBody] = useState("");
+export function MessagingPage({
+  subject,
+  contactEmail,
+  messages,
+  orgSlug,
+  rfqLabel,
+  declineDraft = null,
+}: Props) {
   const displaySubject = subject
     ? subject.startsWith("Re:") ? subject : `Re: ${subject}`
     : "Re: (no subject)";
+
+  // Composer state. Seeded from the decline draft when present; otherwise the
+  // normal empty/derived defaults. All three fields stay editable so a cancelled
+  // decline draft can be revised by hand.
+  const [to, setTo] = useState<string[]>(
+    declineDraft?.to ?? (contactEmail ? [contactEmail] : []),
+  );
+  const [toInput, setToInput] = useState("");
+  const [composeSubject, setComposeSubject] = useState(declineDraft?.subject ?? displaySubject);
+  const [body, setBody] = useState(declineDraft?.body ?? "");
+
+  // Confirm-to-send prompt. Auto-opens once when arriving with a decline draft.
+  const [confirmOpen, setConfirmOpen] = useState(Boolean(declineDraft));
+  const [sent, setSent] = useState(false);
+  const autoOpened = useRef(false);
+  useEffect(() => {
+    if (declineDraft && !autoOpened.current) {
+      autoOpened.current = true;
+      setConfirmOpen(true);
+    }
+  }, [declineDraft]);
+
+  function addRecipient(value: string) {
+    const v = value.trim().replace(/,$/, "");
+    if (v && !to.includes(v)) setTo((prev) => [...prev, v]);
+    setToInput("");
+  }
+
+  // Stubbed send. Real delivery isn't wired yet — assemble the exact payload the
+  // send path will need and log it. No customer email is actually delivered.
+  function confirmSend() {
+    const payload = {
+      rfq: rfqLabel,
+      orgSlug,
+      to,
+      cc: [] as string[],
+      bcc: [] as string[],
+      subject: composeSubject,
+      bodyText: body,
+    };
+    console.log("[decline notice] (stubbed send — not delivered)", payload);
+    setConfirmOpen(false);
+    setSent(true);
+  }
 
   return (
     <div className="flex flex-col h-full bg-[hsl(210_20%_96%)]">
@@ -165,44 +227,46 @@ export function MessagingPage({ subject, contactEmail, messages }: Props) {
       <div className="shrink-0 px-4 pb-4 pt-0">
       <div className="bg-white rounded-xl border border-[#E5E7EB] shadow-sm overflow-hidden">
         {/* Row 1: To */}
-        <div className="flex items-center gap-2 px-4 py-2 border-b border-[#F3F4F6]">
+        <div className="flex items-center gap-2 px-4 py-2 border-b border-[#F3F4F6] flex-wrap">
           <span className="text-[13px] text-[#9CA3AF] shrink-0 w-14">To:</span>
-          {contactEmail && (
-            <span className="flex items-center gap-1 bg-[#F3F4F6] rounded px-2 py-0.5 text-[13px] text-[#374151]">
-              {contactEmail}
-              <button type="button" className="text-[#9CA3AF] ml-1 cursor-not-allowed" disabled>×</button>
+          {to.map((email) => (
+            <span
+              key={email}
+              className="flex items-center gap-1 bg-[#F3F4F6] rounded px-2 py-0.5 text-[13px] text-[#374151]"
+            >
+              {email}
+              <button
+                type="button"
+                onClick={() => setTo((prev) => prev.filter((e) => e !== email))}
+                className="text-[#9CA3AF] ml-1 hover:text-[#EF4444]"
+                aria-label={`Remove ${email}`}
+              >
+                ×
+              </button>
             </span>
-          )}
+          ))}
           <input
-            disabled
+            value={toInput}
+            onChange={(e) => setToInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === ",") {
+                e.preventDefault();
+                addRecipient(toInput);
+              }
+            }}
+            onBlur={() => toInput && addRecipient(toInput)}
             placeholder="Add to email"
-            className="flex-1 text-[13px] outline-none bg-transparent text-[#9CA3AF] cursor-not-allowed"
+            className="flex-1 min-w-[120px] text-[13px] outline-none bg-transparent text-[#1F2937]"
           />
-          <div className="flex items-center gap-3 shrink-0">
-            <button
-              type="button"
-              onClick={() => console.log("TODO: add Cc")}
-              className="text-[13px] text-[#2563EB] hover:underline"
-            >
-              +Cc
-            </button>
-            <button
-              type="button"
-              onClick={() => console.log("TODO: add Bcc")}
-              className="text-[13px] text-[#2563EB] hover:underline"
-            >
-              +Bcc
-            </button>
-          </div>
         </div>
 
         {/* Row 2: Subject */}
         <div className="flex items-center gap-2 px-4 py-2 border-b border-[#F3F4F6]">
           <span className="text-[13px] text-[#9CA3AF] shrink-0 w-14">Subject:</span>
           <input
-            disabled
-            defaultValue={displaySubject}
-            className="flex-1 text-[13px] text-[#1F2937] outline-none bg-transparent cursor-not-allowed"
+            value={composeSubject}
+            onChange={(e) => setComposeSubject(e.target.value)}
+            className="flex-1 text-[13px] text-[#1F2937] outline-none bg-transparent"
           />
         </div>
 
@@ -247,6 +311,11 @@ export function MessagingPage({ subject, contactEmail, messages }: Props) {
 
         {/* Row 4: Actions */}
         <div className="flex items-center justify-end gap-2 px-4 py-3 border-t border-[#F3F4F6]">
+          {sent && (
+            <span className="mr-auto text-[13px] text-green-600">
+              Decline notice sent (stubbed — not delivered)
+            </span>
+          )}
           <button
             type="button"
             onClick={() => console.log("TODO: discard")}
@@ -263,7 +332,11 @@ export function MessagingPage({ subject, contactEmail, messages }: Props) {
           </button>
           <button
             type="button"
-            onClick={() => console.log("TODO: send")}
+            onClick={() =>
+              declineDraft
+                ? setConfirmOpen(true)
+                : console.log("TODO: send")
+            }
             className="flex items-center gap-1.5 text-[13px] px-3 py-1.5 bg-[#2563EB] hover:bg-[#1d4ed8] text-white rounded-md transition-colors font-medium"
           >
             <Send className="w-3.5 h-3.5" />
@@ -272,6 +345,49 @@ export function MessagingPage({ subject, contactEmail, messages }: Props) {
         </div>
       </div>
       </div>
+
+      {/* Confirm-to-send prompt for the decline notice. No email leaves without
+          this explicit confirmation. Cancel leaves the draft editable above. */}
+      {confirmOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
+          <div className="w-full max-w-sm rounded-xl bg-white p-5 shadow-xl">
+            <div className="flex items-start justify-between">
+              <h2 className="text-[15px] font-semibold text-[#1F2937]">Send decline notice?</h2>
+              <button
+                type="button"
+                onClick={() => setConfirmOpen(false)}
+                className="text-[#9CA3AF] hover:text-[#1F2937]"
+                aria-label="Close"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <p className="mt-2 text-[13px] text-[#6B7280]">
+              This sends the decline reply to{" "}
+              <span className="font-medium text-[#374151]">{to.join(", ") || "—"}</span>. You can
+              review or edit the draft first.
+            </p>
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setConfirmOpen(false)}
+                className="rounded-md border border-[#E5E7EB] px-4 py-2 text-[13px] font-medium text-[#374151] hover:bg-[#F3F4F6] transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={confirmSend}
+                disabled={to.length === 0}
+                className="flex items-center gap-1.5 rounded-md bg-[#2563EB] px-4 py-2 text-[13px] font-medium text-white hover:bg-[#1d4ed8] transition-colors disabled:opacity-50"
+              >
+                <Send className="h-3.5 w-3.5" />
+                Send
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -220,6 +220,7 @@ function KebabMenu({
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   const [, startTransition] = useTransition();
+  const router = useRouter();
 
   useEffect(() => {
     if (!open) return;
@@ -237,7 +238,12 @@ function KebabMenu({
     const fd = new FormData();
     fd.set("orgSlug", orgSlug);
     fd.set("rfqId", rfqId);
-    startTransition(() => declineRfq(fd));
+    // Explicit decline path A: decline, then route to Messaging to pre-draft the
+    // customer notice for confirm-to-send.
+    startTransition(async () => {
+      await declineRfq(fd);
+      router.push(`/${orgSlug}/rfqs/${rfqId}/messaging?draft=decline`);
+    });
   }
 
   return (

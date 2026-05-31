@@ -44,6 +44,7 @@ interface Part {
   material: string | null;
   processType: string | null;
   sortOrder: number;
+  isNoBid: boolean;
 }
 
 interface EmailMsg {
@@ -112,7 +113,12 @@ export function RfqOverview({
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [showHint, setShowHint] = useState(true);
-  const isDeclined = declinedAt !== null;
+  const isExplicitlyDeclined = declinedAt !== null;
+  // All parts no-bid → the RFQ is Declined by consequence (no active decision).
+  const isAllNoBid = parts.length > 0 && parts.every((p) => p.isNoBid);
+  const isDeclined = isExplicitlyDeclined || isAllNoBid;
+
+  const messagingDraftHref = `/${orgSlug}/rfqs/${rfqId}/messaging?draft=decline`;
 
   function handleDecline() {
     // Whole-RFQ decline (No Bid). Meaningful state change — confirm first.
@@ -120,9 +126,11 @@ export function RfqOverview({
     const fd = new FormData();
     fd.set("orgSlug", orgSlug);
     fd.set("rfqId", rfqUuid);
+    // Explicit decline path A: decline, then route to Messaging to pre-draft the
+    // customer notice (template + tokens) for confirm-to-send.
     startTransition(async () => {
       await declineRfq(fd);
-      router.refresh();
+      router.push(messagingDraftHref);
     });
   }
   const [activeCategories, setActiveCategories] = useState<Set<string>>(
@@ -491,14 +499,31 @@ export function RfqOverview({
 
       {/* Action bar */}
       <div className="shrink-0 border-t border-[hsl(var(--border))] bg-white px-4 py-3 flex items-center justify-end gap-2">
-        <button
-          type="button"
-          onClick={handleDecline}
-          disabled={isDeclined || isPending}
-          className="text-sm px-4 py-2 bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 rounded-md transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-red-50"
-        >
-          {isDeclined ? "Declined" : "No Bid RFQ"}
-        </button>
+        {isDeclined ? (
+          <>
+            <span className="text-sm px-3 py-2 text-[hsl(var(--muted-foreground))] font-medium">
+              Declined
+            </span>
+            {/* Path B / re-entry: opt-in, non-blocking. Nothing is drafted or sent
+                until the user clicks through and confirms in Messaging. */}
+            <button
+              type="button"
+              onClick={() => router.push(messagingDraftHref)}
+              className="text-sm px-4 py-2 bg-white hover:bg-[hsl(var(--accent))] text-[hsl(var(--foreground))] border border-[hsl(var(--border))] rounded-md transition-colors font-medium"
+            >
+              Notify customer of decline
+            </button>
+          </>
+        ) : (
+          <button
+            type="button"
+            onClick={handleDecline}
+            disabled={isPending}
+            className="text-sm px-4 py-2 bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 rounded-md transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-red-50"
+          >
+            No Bid RFQ
+          </button>
+        )}
         <button
           type="button"
           disabled
