@@ -1,17 +1,22 @@
 "use client";
 
-// Owns the single quote-PDF render (usePDF) so the preview and the composer's
-// auto-attachment share one document. Loaded with ssr:false (see send-view).
-// Handles the stubbed send + the "Quote Complete" confirmation.
+// Fetches the server-rendered quote PDF (one source of truth) and shares that
+// single blob across the preview, Download, Print, and the email attachment.
+// Reads the quote positions from the client snapshot; everything else comes from
+// the server-provided spec. Handles the stubbed send + the confirmation card.
 
-import { type DocInfo, type DocRecipient, type DocTemplate, positionsFromSnapshot } from "@/lib/quoting/quote-doc";
+import { fetchQuotePdf } from "@/lib/quoting/fetch-quote-pdf";
+import {
+  type DocInfo,
+  type DocRecipient,
+  type DocTemplateSpec,
+  positionsFromSnapshot,
+} from "@/lib/quoting/quote-doc";
 import { getQuoteSnapshot, markQuoteSent } from "@/lib/quoting/quote-store";
-import { usePDF } from "@react-pdf/renderer";
 import { useRouter } from "next/navigation";
 import * as React from "react";
 import { buildDefaultSnapshot } from "../quote/quote-state";
 import { EmailComposer, type SendPayload } from "./email-composer";
-import { QuoteDocument } from "./quote-document";
 import { QuotePdfPane } from "./quote-pdf-pane";
 import type { OriginalEmail } from "./send-stub";
 
@@ -20,7 +25,7 @@ interface Props {
   rfqParam: string;
   rfqId: string;
   rfqNumber: number;
-  template: DocTemplate;
+  template: DocTemplateSpec;
   recipient: DocRecipient;
   info: DocInfo;
   customerEmail: string;
@@ -41,35 +46,46 @@ export function SendClient({
   original,
 }: Props) {
   const router = useRouter();
-  // ssr:false → sessionStorage is available; read the saved quote or fall back.
   const [snapshot] = React.useState(
     () => getQuoteSnapshot(rfqId) ?? buildDefaultSnapshot(rfqNumber),
   );
   const [submitted, setSubmitted] = React.useState(false);
+  const [pdf, setPdf] = React.useState<{ url: string; blob: Blob } | null>(null);
+  const [pdfError, setPdfError] = React.useState(false);
 
-  const positions = React.useMemo(() => positionsFromSnapshot(snapshot), [snapshot]);
-
-  const [instance] = usePDF({
-    document: (
-      <QuoteDocument
-        template={template}
-        recipient={recipient}
-        info={info}
-        positions={positions}
-      />
-    ),
-  });
+  // Render the PDF once on the server; reuse the blob everywhere.
+  React.useEffect(() => {
+    let url: string | null = null;
+    let cancelled = false;
+    fetchQuotePdf({
+      orgSlug,
+      template,
+      recipient,
+      info,
+      positions: positionsFromSnapshot(snapshot),
+    })
+      .then((blob) => {
+        if (cancelled) return;
+        url = URL.createObjectURL(blob);
+        setPdf({ url, blob });
+      })
+      .catch(() => !cancelled && setPdfError(true));
+    return () => {
+      cancelled = true;
+      if (url) URL.revokeObjectURL(url);
+    };
+  }, [orgSlug, template, recipient, info, snapshot]);
 
   const downloadName = `${template.companyName} Quote ${info.quoteNo} ${info.dateISO.slice(0, 10)}.pdf`;
   const attachmentName = `${template.companyName} Quote ${info.quoteNo}`;
 
   function handleSend(payload: SendPayload) {
-    // Stub: log the reply payload (incl. the rendered PDF). Real email send is a
-    // later epic — see quoteService.send.
+    // Stub: log the reply payload (incl. the server-rendered PDF). Real email
+    // send is a later epic and will attach this same PDF.
     console.log("[send quote] reply on thread", {
       thread: original.replyFromEmail,
       ...payload,
-      attachmentBytes: instance.blob?.size ?? 0,
+      attachmentBytes: pdf?.blob.size ?? 0,
     });
     markQuoteSent(rfqId, new Date().toISOString());
     setSubmitted(true);
@@ -90,8 +106,10 @@ export function SendClient({
       {/* Equal-width panes: preview | composer */}
       <div className="min-w-0 flex-1 basis-1/2">
         <QuotePdfPane
-          instance={instance}
-          quoteNumber={snapshot.quoteNumber}
+          url={pdf?.url ?? null}
+          loading={!pdf && !pdfError}
+          error={pdfError}
+          quoteLabel={info.quoteNo}
           downloadName={downloadName}
         />
       </div>

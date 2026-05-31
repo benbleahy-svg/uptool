@@ -70,32 +70,23 @@ export default async function QuoteTemplatePage({ params }: Props) {
     bankAccounts: row?.bankAccounts ?? [],
   };
 
-  // Inline logos as data URIs so the live preview (react-pdf) can embed them
-  // without a cross-origin fetch to object storage.
-  const toDataUri = async (key: string): Promise<string | null> => {
-    try {
-      const { body, contentType } = await storageService.download(key);
-      return `data:${contentType};base64,${body.toString("base64")}`;
-    } catch {
-      return null;
-    }
-  };
-
-  const initialLogoDataUri = row?.logoUrl ? await toDataUri(row.logoUrl) : null;
-  const initialFooterLogos = (
-    await Promise.all(
-      (row?.footerLogos ?? []).map(async (key) => {
-        const dataUri = await toDataUri(key);
-        return dataUri ? { key, dataUri } : null;
-      }),
-    )
-  ).filter((f): f is { key: string; dataUri: string } => f !== null);
+  // Logos are presigned URLs for display; the form sends the keys to the render
+  // endpoint, which resolves them server-side.
+  const initialLogo = row?.logoUrl
+    ? { key: row.logoUrl, url: await storageService.presignedUrl(row.logoUrl, 3600) }
+    : null;
+  const initialFooterLogos = await Promise.all(
+    (row?.footerLogos ?? []).map(async (key) => ({
+      key,
+      url: await storageService.presignedUrl(key, 3600),
+    })),
+  );
 
   return (
     <QuoteTemplateForm
       orgSlug={orgSlug}
       initial={initial}
-      initialLogoDataUri={initialLogoDataUri}
+      initialLogo={initialLogo}
       initialFooterLogos={initialFooterLogos}
       s={s}
       onSave={saveQuoteTemplate}

@@ -105,16 +105,38 @@ the brief left open.
     `QuoteDocument` with sample RFQ data and re-renders (debounced) as fields are
     edited.
 
-### Known limitation — "Sheet n/m" in the browser build
+## Addendum — server-side render (single source of truth)
 
-The per-page number uses react-pdf's `render`/`fixed` callback. It renders
-correctly in the **node `renderToBuffer`** path (isolated test → "Sheet 1 / 1")
-but does **not** paint in the **browser `usePDF`** build in `@react-pdf/renderer`
-4.5.1, so it's absent from the in-browser preview/Download/attachment. The rest of
-the legal footer (the legally-required Pflichtangaben) renders on every page. The
-fix is to render the quote PDF **server-side** (`renderToBuffer`) for the real
-Download/email attachment in a later step — which also removes the data-URI logo
-workaround. Code keeps the canonical pattern so a server path "just works".
+16. **The quote PDF now renders server-side via `POST /api/quote-pdf`.** `usePDF`
+    is gone from all client code. The client (Send page + settings preview) POSTs a
+    `QuotePdfRequest` (template fields + logo storage *keys*, recipient, info,
+    positions); the route `requireAuth`s, checks org membership, resolves the logo
+    keys server-side, and `renderToBuffer`s `QuoteDocument`. The on-screen preview,
+    Download, Print, and the (Prompt 9) email attachment all consume that **one**
+    rendered blob — one source of truth. **Chosen over keeping `usePDF` for previews**
+    (the recommended option): one render path is worth the slight preview latency
+    and removed the data-URI logo workaround everywhere.
+    - The client never handles image bytes: it sends keys; `<img>` thumbnails use
+      presigned URLs; the server inlines logos for the PDF. No client data URIs.
+    - `usePDF` removed → `@react-pdf/renderer` no longer ships to the browser; the
+      `/send` route first-load dropped to ~105 kB.
+    - CSP gained `frame-src 'self' blob:` for the object-URL preview/print iframe.
+
+### Known limitation — "Sheet n/m" page number (deferred)
+
+The per-page number uses react-pdf's `render`/`fixed` callback. It paints in a
+**minimal document** (verified both in a raw-node `renderToBuffer` test *and* a
+minimal doc rendered by the `/api/quote-pdf` route itself → "Sheet 1 / 1"), but
+**not** in the full `QuoteDocument` — even server-side. Bisecting ruled out
+webpack bundling (`serverExternalPackages`), the `whiteSpace` style, the logo
+`Image`, the footer `View`, and component-vs-function render mode; a *static*
+`fixed` Text renders fine in the full doc, so only the `render` callback's output
+is dropped. Root cause not isolated within a reasonable time budget. The
+legally-required footer (Pflichtangaben) renders on every page; only the page
+counter is missing. The canonical `render`/`fixed` code is retained (it's correct
+per react-pdf docs and works in minimal docs), with a code comment pointing here.
+Revisit on a future `@react-pdf/renderer` upgrade or by splitting the document so
+the page-number element sits in a simpler subtree.
 
 ## Consequences
 

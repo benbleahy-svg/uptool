@@ -3,7 +3,7 @@
 // Client boundary for the Send page. SendClient owns @react-pdf/renderer (usePDF)
 // and is browser-only, so it's loaded with ssr:false — like the estimate viewers.
 
-import type { DocInfo, DocRecipient, DocTemplate } from "@/lib/quoting/quote-doc";
+import type { DocInfo, DocRecipient, DocTemplateSpec } from "@/lib/quoting/quote-doc";
 import dynamic from "next/dynamic";
 import type { OriginalEmail } from "./send-stub";
 
@@ -21,7 +21,7 @@ interface Props {
   rfqParam: string;
   rfqId: string;
   rfqNumber: number;
-  template: DocTemplate;
+  template: DocTemplateSpec;
   recipient: DocRecipient;
   info: DocInfo;
   customerEmail: string;

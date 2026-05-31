@@ -32,7 +32,9 @@ async function uploadImage(orgId: string, file: Blob, folder: string): Promise<s
   return key;
 }
 
-export async function uploadTemplateLogo(formData: FormData): Promise<string> {
+export async function uploadTemplateLogo(
+  formData: FormData,
+): Promise<{ key: string; url: string }> {
   const { userId } = await requireAuth();
   const orgSlug = formData.get("orgSlug") as string;
   const orgId = await getOrgId(orgSlug, userId);
@@ -47,7 +49,7 @@ export async function uploadTemplateLogo(formData: FormData): Promise<string> {
   const key = await uploadImage(orgId, file, "logo");
   await quoteTemplateService.updateLogo(orgId, key);
   revalidatePath(`/${orgSlug}/settings/quote-template`);
-  return await storageService.presignedUrl(key, 3600);
+  return { key, url: await storageService.presignedUrl(key, 3600) };
 }
 
 export async function removeTemplateLogo(formData: FormData): Promise<void> {

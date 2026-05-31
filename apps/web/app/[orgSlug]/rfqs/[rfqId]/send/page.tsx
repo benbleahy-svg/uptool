@@ -1,7 +1,7 @@
-import type { DocInfo, DocRecipient, DocTemplate } from "@/lib/quoting/quote-doc";
+import type { DocInfo, DocRecipient, DocTemplateSpec } from "@/lib/quoting/quote-doc";
 import { resolveRfq } from "@/lib/resolve-rfq";
 import { db } from "@uptool/db";
-import { type LegalForm, quoteTemplateService, storageService } from "@uptool/services";
+import { type LegalForm, quoteTemplateService } from "@uptool/services";
 import { format } from "date-fns";
 import { notFound } from "next/navigation";
 import { SendView } from "./send-view";
@@ -11,18 +11,8 @@ interface Props {
   params: Promise<{ orgSlug: string; rfqId: string }>;
 }
 
-/** Download a stored object as a data URI (inlined into the PDF). */
-async function toDataUri(key: string): Promise<string | null> {
-  try {
-    const { body, contentType } = await storageService.download(key);
-    return `data:${contentType};base64,${body.toString("base64")}`;
-  } catch {
-    return null;
-  }
-}
-
 // Minimal defaults when the org hasn't configured a quote template yet.
-function defaultTemplate(companyName: string): DocTemplate {
+function defaultTemplate(companyName: string): DocTemplateSpec {
   return {
     slogan: "",
     companyName,
@@ -56,8 +46,8 @@ function defaultTemplate(companyName: string): DocTemplate {
     taxNumber: "",
     vatId: "",
     bankAccounts: [],
-    logoDataUri: null,
-    footerLogoUris: [],
+    logoKey: null,
+    footerLogoKeys: [],
   };
 }
 
@@ -74,7 +64,7 @@ export default async function SendPage({ params }: Props) {
 
   const row = await quoteTemplateService.get(org.id);
 
-  const template: DocTemplate = row
+  const template: DocTemplateSpec = row
     ? {
         slogan: row.slogan,
         companyName: row.companyName || org.name,
@@ -108,10 +98,8 @@ export default async function SendPage({ params }: Props) {
         taxNumber: row.taxNumber,
         vatId: row.vatId,
         bankAccounts: row.bankAccounts,
-        logoDataUri: row.logoUrl ? await toDataUri(row.logoUrl) : null,
-        footerLogoUris: (
-          await Promise.all(row.footerLogos.map((k) => toDataUri(k)))
-        ).filter((u): u is string => u !== null),
+        logoKey: row.logoUrl ?? null,
+        footerLogoKeys: row.footerLogos,
       }
     : defaultTemplate(org.name);
 

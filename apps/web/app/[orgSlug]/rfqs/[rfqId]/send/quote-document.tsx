@@ -74,7 +74,7 @@ const s = StyleSheet.create({
   infoValue: { width: "55%" },
 
   subject: { fontSize: 11, fontFamily: "Helvetica-Bold", marginBottom: 10 },
-  intro: { marginBottom: 12, whiteSpace: "pre-wrap" },
+  intro: { marginBottom: 12 },
 
   // Positions table
   table: { marginBottom: 10 },
@@ -132,7 +132,7 @@ const s = StyleSheet.create({
   closing: { marginBottom: 14 },
 
   tncTitle: { fontFamily: "Helvetica-Bold", fontSize: 9, marginBottom: 4 },
-  tnc: { fontSize: 7.5, color: "#444", lineHeight: 1.4, whiteSpace: "pre-wrap" },
+  tnc: { fontSize: 7.5, color: "#444", lineHeight: 1.4 },
 
   // Legal footer (Pflichtangaben) — fixed on every page
   footer: {
@@ -144,7 +144,15 @@ const s = StyleSheet.create({
     borderTopColor: LINE,
     paddingTop: 5,
   },
-  sheet: { textAlign: "right", fontSize: 6.5, color: FAINT, marginBottom: 3 },
+  sheet: {
+    position: "absolute",
+    bottom: 116,
+    left: 50,
+    right: 50,
+    textAlign: "right",
+    fontSize: 6.5,
+    color: FAINT,
+  },
   footerCols: { flexDirection: "row" },
   footerCol: { flex: 1, paddingRight: 8 },
   footerLogos: { flexDirection: "row", alignItems: "flex-start", gap: 4 },
@@ -181,8 +189,8 @@ export function QuoteDocument({ template: tpl, recipient, info, positions }: Quo
         {/* 1 — Letterhead */}
         <View style={s.letterhead}>
           <View style={s.logoBox}>
-            {tpl.logoDataUri ? (
-              <Image src={tpl.logoDataUri} style={s.logoImg} />
+            {tpl.logoUrl ? (
+              <Image src={tpl.logoUrl} style={s.logoImg} />
             ) : (
               <Text style={s.logoMono}>{monogram(tpl.companyName)}</Text>
             )}
@@ -330,12 +338,17 @@ export function QuoteDocument({ template: tpl, recipient, info, positions }: Quo
         {/* 12 — Terms & Conditions (flows onto further pages) */}
         {tpl.termsText ? <Text style={s.tnc}>{tpl.termsText}</Text> : null}
 
-        {/* 13 — Legal footer on every page (page numbering at its top-right) */}
+        {/* Page numbering — fixed on every page, above the legal footer.
+            Known issue: react-pdf's `render` page-number paints in a minimal doc
+            but not in this full document (cause not isolated). See ADR 0012. */}
+        <Text
+          style={s.sheet}
+          fixed
+          render={({ pageNumber, totalPages }) => `${strings.sheet} ${pageNumber} / ${totalPages}`}
+        />
+
+        {/* 13 — Legal footer on every page */}
         <View style={s.footer} fixed>
-          <Text
-            style={s.sheet}
-            render={({ pageNumber, totalPages }) => `${strings.sheet} ${pageNumber} / ${totalPages}`}
-          />
           <View style={s.footerCols}>
             <View style={s.footerCol}>
               <Text style={s.ftStrong}>{tpl.companyName}</Text>
@@ -377,9 +390,9 @@ export function QuoteDocument({ template: tpl, recipient, info, positions }: Quo
                 </View>
               ))}
             </View>
-            {tpl.footerLogoUris.length > 0 && (
+            {tpl.footerLogoUrls.length > 0 && (
               <View style={s.footerLogos}>
-                {tpl.footerLogoUris.map((uri) => (
+                {tpl.footerLogoUrls.map((uri) => (
                   <Image key={uri} src={uri} style={s.footerLogo} />
                 ))}
               </View>

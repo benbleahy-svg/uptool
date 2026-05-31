@@ -6,11 +6,28 @@
 import type { QuoteTemplateInput } from "@uptool/services";
 import type { QuoteSnapshot } from "./quote-store";
 
+// Render-time template: logos are URLs (or data URIs) resolved server-side.
+// Built inside the /api/quote-pdf route from a QuotePdfRequest — never assembled
+// on the client.
 export type DocTemplate = QuoteTemplateInput & {
-  /** Logo inlined as a data URI (avoids react-pdf fetching object storage). */
-  logoDataUri: string | null;
-  footerLogoUris: string[];
+  logoUrl: string | null;
+  footerLogoUrls: string[];
 };
+
+// Wire payload the client POSTs to /api/quote-pdf. Logos travel as storage keys;
+// the server resolves them (so the client never handles image bytes/data URIs).
+export type DocTemplateSpec = QuoteTemplateInput & {
+  logoKey: string | null;
+  footerLogoKeys: string[];
+};
+
+export interface QuotePdfRequest {
+  orgSlug: string;
+  template: DocTemplateSpec;
+  recipient: DocRecipient;
+  info: DocInfo;
+  positions: DocPosition[];
+}
 
 export interface DocRecipient {
   organization: string;

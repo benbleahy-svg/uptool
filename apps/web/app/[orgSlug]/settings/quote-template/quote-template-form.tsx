@@ -1,6 +1,6 @@
 "use client";
 
-import type { DocTemplate } from "@/lib/quoting/quote-doc";
+import type { DocTemplateSpec } from "@/lib/quoting/quote-doc";
 import type { LegalForm, QuoteTemplateInput } from "@uptool/services";
 import { ChevronDown, Plus, Trash2, Upload } from "lucide-react";
 import dynamic from "next/dynamic";
@@ -19,14 +19,9 @@ const TemplatePreview = dynamic(
   },
 );
 
-/** Read a File as a data URI (for inline preview without a round-trip). */
-function readDataUri(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result as string);
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
-  });
+interface LogoRef {
+  key: string;
+  url: string;
 }
 
 const INPUT =
@@ -60,20 +55,20 @@ function isLooseIban(value: string): boolean {
 interface Props {
   orgSlug: string;
   initial: QuoteTemplateInput;
-  initialLogoDataUri: string | null;
-  initialFooterLogos: { key: string; dataUri: string }[];
+  initialLogo: LogoRef | null;
+  initialFooterLogos: LogoRef[];
   s: TemplateStrings;
   onSave: (orgSlug: string, data: QuoteTemplateInput) => Promise<void>;
-  onUploadLogo: (fd: FormData) => Promise<string>;
+  onUploadLogo: (fd: FormData) => Promise<LogoRef>;
   onRemoveLogo: (fd: FormData) => Promise<void>;
-  onUploadFooterLogo: (fd: FormData) => Promise<{ key: string; url: string }>;
+  onUploadFooterLogo: (fd: FormData) => Promise<LogoRef>;
   onRemoveFooterLogo: (fd: FormData) => Promise<void>;
 }
 
 export function QuoteTemplateForm({
   orgSlug,
   initial,
-  initialLogoDataUri,
+  initialLogo,
   initialFooterLogos,
   s,
   onSave,
@@ -83,9 +78,8 @@ export function QuoteTemplateForm({
   onRemoveFooterLogo,
 }: Props) {
   const [data, setData] = React.useState<QuoteTemplateInput>(initial);
-  const [logoDataUri, setLogoDataUri] = React.useState<string | null>(initialLogoDataUri);
-  const [footerLogos, setFooterLogos] =
-    React.useState<{ key: string; dataUri: string }[]>(initialFooterLogos);
+  const [logo, setLogo] = React.useState<LogoRef | null>(initialLogo);
+  const [footerLogos, setFooterLogos] = React.useState<LogoRef[]>(initialFooterLogos);
   const [isDirty, setIsDirty] = React.useState(false);
   const [pending, startTransition] = React.useTransition();
   const [busy, setBusy] = React.useState(false);
@@ -116,22 +110,22 @@ export function QuoteTemplateForm({
 
   function handleReset() {
     setData(initial);
-    setLogoDataUri(initialLogoDataUri);
+    setLogo(initialLogo);
     setFooterLogos(initialFooterLogos);
     setIsDirty(false);
     if (logoRef.current) logoRef.current.value = "";
   }
 
-  async function handleLogo(e: React.ChangeEvent<HTMLInputElement>) {
+  function handleLogo(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file || file.size > 1024 * 1024) return;
-    // Inline immediately for the preview; persist in parallel.
-    setLogoDataUri(await readDataUri(file));
     const fd = new FormData();
     fd.set("orgSlug", orgSlug);
     fd.set("logo", file);
     setBusy(true);
-    onUploadLogo(fd).finally(() => setBusy(false));
+    onUploadLogo(fd)
+      .then((ref) => setLogo(ref))
+      .finally(() => setBusy(false));
   }
 
   function handleRemoveLogo() {
@@ -140,22 +134,21 @@ export function QuoteTemplateForm({
     setBusy(true);
     onRemoveLogo(fd)
       .then(() => {
-        setLogoDataUri(null);
+        setLogo(null);
         if (logoRef.current) logoRef.current.value = "";
       })
       .finally(() => setBusy(false));
   }
 
-  async function handleFooterLogo(e: React.ChangeEvent<HTMLInputElement>) {
+  function handleFooterLogo(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file || file.size > 1024 * 1024) return;
-    const dataUri = await readDataUri(file);
     const fd = new FormData();
     fd.set("orgSlug", orgSlug);
     fd.set("logo", file);
     setBusy(true);
     onUploadFooterLogo(fd)
-      .then(({ key }) => setFooterLogos((prev) => [...prev, { key, dataUri }]))
+      .then((ref) => setFooterLogos((prev) => [...prev, ref]))
       .finally(() => {
         setBusy(false);
         if (footerRef.current) footerRef.current.value = "";
@@ -174,11 +167,12 @@ export function QuoteTemplateForm({
 
   const showRegister = REGISTERED_FORMS.has(data.legalForm);
 
-  // The exact DocTemplate the Send page would render, from the live form state.
-  const previewTemplate: DocTemplate = {
+  // The exact spec the Send page would POST, from the live form state. The
+  // server resolves the logo keys when rendering the preview.
+  const previewSpec: DocTemplateSpec = {
     ...data,
-    logoDataUri,
-    footerLogoUris: footerLogos.map((f) => f.dataUri),
+    logoKey: logo?.key ?? null,
+    footerLogoKeys: footerLogos.map((f) => f.key),
   };
 
   return (
@@ -193,9 +187,9 @@ export function QuoteTemplateForm({
         {/* 1 — Logo & Letterhead */}
         <Section title={s.sLogo}>
           <div className="flex items-center gap-4">
-            {logoDataUri ? (
+            {logo ? (
               <img
-                src={logoDataUri}
+                src={logo.url}
                 alt="logo"
                 className="h-16 w-16 rounded-md border border-[hsl(var(--border))] object-contain"
               />
@@ -214,7 +208,7 @@ export function QuoteTemplateForm({
                 >
                   {s.logoUpload}
                 </button>
-                {logoDataUri && (
+                {logo && (
                   <button
                     type="button"
                     disabled={busy}
@@ -637,7 +631,7 @@ export function QuoteTemplateForm({
               {footerLogos.map((f) => (
                 <div key={f.key} className="relative">
                   <img
-                    src={f.dataUri}
+                    src={f.url}
                     alt="footer logo"
                     className="h-12 w-12 rounded border border-[hsl(var(--border))] object-contain"
                   />
@@ -677,7 +671,7 @@ export function QuoteTemplateForm({
             <p className="mb-2 text-xs font-medium uppercase tracking-wide text-[hsl(var(--muted-foreground))]">
               Preview
             </p>
-            <TemplatePreview template={previewTemplate} />
+            <TemplatePreview orgSlug={orgSlug} template={previewSpec} />
           </div>
         </div>
       </div>

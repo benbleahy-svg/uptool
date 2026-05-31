@@ -33,6 +33,9 @@ const config: NextConfig = {
               "img-src 'self' data: blob: https:",
               "font-src 'self'",
               "connect-src 'self' https://cdn.jsdelivr.net",
+              // blob: needed for the quote PDF preview/print iframe (object URL of
+              // the server-rendered PDF).
+              "frame-src 'self' blob:",
               "frame-ancestors 'none'",
             ].join("; "),
           },
