@@ -86,12 +86,19 @@ export function SendClient({
   const attachmentName = `${template.companyName} Quote ${info.quoteNo}`;
 
   function handleSend(payload: SendPayload) {
-    // Stub: log the reply payload (incl. the server-rendered PDF). Real email
-    // send is a later epic and will attach this same PDF.
+    // Stub: assemble + log the outgoing attachments — the live quote PDF (when
+    // attached) plus the user's files — so the real send epic has the shape.
+    const attachments = [
+      ...(payload.quoteAttached && pdf
+        ? [{ kind: "quote", name: downloadName, size: pdf.blob.size, type: "application/pdf" }]
+        : []),
+      ...payload.userFiles.map((f) => ({ kind: "file", ...f })),
+    ];
     console.log("[send quote] reply on thread", {
       thread: original.replyFromEmail,
       ...payload,
-      attachmentBytes: pdf?.blob.size ?? 0,
+      attachments,
+      attachmentCount: attachments.length,
     });
     markQuoteSent(rfqId, new Date().toISOString());
     setSubmitted(true);
@@ -112,6 +119,7 @@ export function SendClient({
       {/* Equal-width panes: preview | composer */}
       <div className="min-w-0 flex-1 basis-1/2">
         <QuotePdfPane
+          blob={pdf?.blob ?? null}
           url={pdf?.url ?? null}
           loading={!pdf && !pdfError}
           error={pdfError}
@@ -126,6 +134,7 @@ export function SendClient({
           contactName={contactName}
           quoteNumber={snapshot.quoteNumber}
           attachmentName={attachmentName}
+          quoteBytes={pdf?.blob.size ?? 0}
           onSend={handleSend}
         />
       </aside>

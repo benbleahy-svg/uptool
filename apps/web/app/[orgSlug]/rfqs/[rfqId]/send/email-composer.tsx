@@ -31,13 +31,22 @@ import {
 import * as React from "react";
 import { type OriginalEmail, defaultReplyBody } from "./send-stub";
 
+export interface SendUserFile {
+  name: string;
+  size: number;
+  type: string;
+}
+
 export interface SendPayload {
   to: string[];
   cc: string[];
   bcc: string[];
   bodyText: string;
   bodyHtml: string;
-  attachmentName: string | null;
+  /** Whether the auto-generated quote PDF is attached. */
+  quoteAttached: boolean;
+  /** Files the user attached from their computer. */
+  userFiles: SendUserFile[];
 }
 
 interface Props {
@@ -47,8 +56,20 @@ interface Props {
   quoteNumber: number;
   /** Attachment chip label, e.g. "We Mill You Chill Quote 1194". */
   attachmentName: string;
+  /** Size of the generated quote PDF in bytes (for the 25 MB total budget). */
+  quoteBytes: number;
   onSend: (payload: SendPayload) => void;
 }
+
+interface UserAttachment {
+  id: string;
+  name: string;
+  size: number;
+  type: string;
+}
+
+const MAX_TOTAL_BYTES = 25 * 1024 * 1024;
+const fmtMb = (bytes: number) => `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 
 function dedupe(emails: string[]): string[] {
   return [...new Set(emails.filter(Boolean))];
@@ -60,6 +81,7 @@ export function EmailComposer({
   contactName,
   quoteNumber,
   attachmentName,
+  quoteBytes,
   onSend,
 }: Props) {
   const [to, setTo] = React.useState<string[]>(() =>
@@ -69,11 +91,48 @@ export function EmailComposer({
   const [bcc, setBcc] = React.useState<string[]>([]);
   const [showCc, setShowCc] = React.useState(false);
   const [showBcc, setShowBcc] = React.useState(false);
-  const [attachIncluded, setAttachIncluded] = React.useState(true);
+  // The auto-generated quote PDF (system-managed) is tracked separately from
+  // files the user attaches from their computer.
+  const [quoteAttached, setQuoteAttached] = React.useState(true);
+  const [userAttachments, setUserAttachments] = React.useState<UserAttachment[]>([]);
+  const [attachError, setAttachError] = React.useState<string | null>(null);
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
 
   const editorRef = React.useRef<HTMLDivElement>(null);
   const initialized = React.useRef(false);
   const defaultBody = defaultReplyBody(contactName, quoteNumber);
+
+  const usedBytes =
+    (quoteAttached ? quoteBytes : 0) + userAttachments.reduce((s, a) => s + a.size, 0);
+
+  function handleFilesPicked(e: React.ChangeEvent<HTMLInputElement>) {
+    const picked = Array.from(e.target.files ?? []);
+    const errors: string[] = [];
+    const added: UserAttachment[] = [];
+    let running = usedBytes;
+    for (const file of picked) {
+      if (file.size > MAX_TOTAL_BYTES) {
+        errors.push(`“${file.name}” (${fmtMb(file.size)}) exceeds the 25 MB limit.`);
+        continue;
+      }
+      if (running + file.size > MAX_TOTAL_BYTES) {
+        errors.push(
+          `Adding “${file.name}” would exceed the 25 MB total (currently ${fmtMb(running)}).`,
+        );
+        continue;
+      }
+      running += file.size;
+      added.push({ id: crypto.randomUUID(), name: file.name, size: file.size, type: file.type });
+    }
+    if (added.length) setUserAttachments((prev) => [...prev, ...added]);
+    setAttachError(errors.length ? errors.join(" ") : null);
+    e.target.value = ""; // allow re-picking the same file
+  }
+
+  function removeUserAttachment(id: string) {
+    setUserAttachments((prev) => prev.filter((a) => a.id !== id));
+    setAttachError(null);
+  }
 
   // Seed the contentEditable once (uncontrolled to avoid caret jumps).
   React.useEffect(() => {
@@ -96,7 +155,8 @@ export function EmailComposer({
       bcc,
       bodyText: el?.innerText ?? defaultBody,
       bodyHtml: el?.innerHTML ?? "",
-      attachmentName: attachIncluded ? attachmentName : null,
+      quoteAttached,
+      userFiles: userAttachments.map(({ name, size, type }) => ({ name, size, type })),
     });
   }
 
@@ -271,23 +331,64 @@ export function EmailComposer({
           className="min-h-[88px] w-full whitespace-pre-wrap px-4 py-2 text-[14px] text-gray-800 outline-none"
         />
 
-        {/* Auto-attached quote PDF */}
-        {attachIncluded && (
-          <div className="px-4 pb-1">
-            <span className="inline-flex items-center gap-1.5 rounded border border-gray-200 bg-gray-50 px-2 py-1 text-xs text-gray-700">
-              <FileText className="h-3.5 w-3.5 text-gray-400" />
-              {attachmentName}
+        {/* Attachments — auto quote PDF + user files in one row */}
+        <div className="px-4 pb-1">
+          <div className="flex flex-wrap items-center gap-2">
+            {/* System-managed quote PDF: removable, then re-addable from /api/quote-pdf */}
+            {quoteAttached ? (
+              <span className="inline-flex items-center gap-1.5 rounded border border-gray-200 bg-gray-50 px-2 py-1 text-xs text-gray-700">
+                <FileText className="h-3.5 w-3.5 text-gray-400" />
+                {attachmentName}
+                <button
+                  type="button"
+                  onClick={() => setQuoteAttached(false)}
+                  aria-label="Remove quote attachment"
+                  className="ml-1 text-gray-400 hover:text-red-500"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </span>
+            ) : (
               <button
                 type="button"
-                onClick={() => setAttachIncluded(false)}
-                aria-label="Remove attachment"
-                className="ml-1 text-gray-400 hover:text-red-500"
+                onClick={() => setQuoteAttached(true)}
+                className="inline-flex items-center gap-1.5 rounded border border-dashed border-gray-300 px-2 py-1 text-xs text-[#2563EB] hover:bg-blue-50"
               >
-                <X className="h-3 w-3" />
+                <Paperclip className="h-3.5 w-3.5" />
+                Re-attach quote
               </button>
-            </span>
+            )}
+            {/* User-attached files */}
+            {userAttachments.map((a) => (
+              <span
+                key={a.id}
+                className="inline-flex items-center gap-1.5 rounded border border-gray-200 bg-white px-2 py-1 text-xs text-gray-700"
+              >
+                <FileText className="h-3.5 w-3.5 text-gray-400" />
+                {a.name}
+                <span className="text-gray-400">({fmtMb(a.size)})</span>
+                <button
+                  type="button"
+                  onClick={() => removeUserAttachment(a.id)}
+                  aria-label={`Remove ${a.name}`}
+                  className="ml-1 text-gray-400 hover:text-red-500"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </span>
+            ))}
           </div>
-        )}
+          {attachError && <p className="mt-1.5 text-xs text-red-500">{attachError}</p>}
+        </div>
+
+        {/* Hidden file picker, opened by the Attach button */}
+        <input
+          ref={fileInputRef}
+          type="file"
+          multiple
+          className="hidden"
+          onChange={handleFilesPicked}
+        />
 
         {/* Actions */}
         <div className="flex items-center justify-end gap-2 border-t border-gray-100 px-4 py-3">
@@ -301,7 +402,7 @@ export function EmailComposer({
           </button>
           <button
             type="button"
-            onClick={() => setAttachIncluded(true)}
+            onClick={() => fileInputRef.current?.click()}
             className="flex items-center gap-1.5 rounded-md border border-gray-200 px-3 py-1.5 text-[13px] text-gray-700 transition-colors hover:bg-gray-100"
           >
             <Paperclip className="h-3.5 w-3.5" />
