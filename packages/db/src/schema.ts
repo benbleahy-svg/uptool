@@ -563,3 +563,106 @@ export const quoteLineItemsRelations = relations(quoteLineItems, ({ one }) => ({
 export const operationTemplatesRelations = relations(operationTemplates, ({ one }) => ({
   org: one(orgs, { fields: [operationTemplates.orgId], references: [orgs.id] }),
 }));
+
+// ─── Quote Template (Settings) ────────────────────────────────────────────────
+// One row per org. Captures everything needed to render a German-standard
+// (DIN 5008) quote PDF, including the legally-required footer (Pflichtangaben).
+
+export const legalFormEnum = pgEnum("legal_form", [
+  "sole_trader",
+  "eK",
+  "GbR",
+  "GmbH",
+  "UG",
+  "AG",
+  "GmbH_Co_KG",
+  "OHG",
+  "KG",
+  "other",
+]);
+
+export interface TemplateContact {
+  roleLabel: string;
+  name: string;
+  phone: string;
+  email: string;
+}
+
+export interface TemplateBankAccount {
+  bankName: string;
+  iban: string;
+  bic: string;
+}
+
+export const quoteTemplates = pgTable(
+  "quote_templates",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id")
+      .notNull()
+      .unique()
+      .references(() => orgs.id, { onDelete: "cascade" }),
+
+    // Identity & letterhead
+    logoUrl: text("logo_url"),
+    slogan: text("slogan").notNull().default(""),
+    companyName: text("company_name").notNull().default(""),
+    legalForm: legalFormEnum("legal_form").notNull().default("GmbH"),
+    street: text("street").notNull().default(""),
+    postalCode: text("postal_code").notNull().default(""),
+    city: text("city").notNull().default(""),
+    country: text("country").notNull().default("Germany"),
+    phone: text("phone").notNull().default(""),
+    fax: text("fax").notNull().default(""),
+    email: text("email").notNull().default(""),
+    website: text("website").notNull().default(""),
+    senderPlace: text("sender_place").notNull().default(""),
+
+    // Locale & tax
+    locale: text("locale").notNull().default("en-US"),
+    currency: text("currency").notNull().default("EUR"),
+    vatRate: numeric("vat_rate").notNull().default("19"),
+    reducedVatRate: numeric("reduced_vat_rate").notNull().default("7"),
+    smallBusiness: boolean("small_business").notNull().default(false),
+
+    // Quote body text
+    subjectTemplate: text("subject_template").notNull().default("Quote No. {quoteNo}"),
+    introText: text("intro_text").notNull().default(""),
+    closingText: text("closing_text").notNull().default("Kind regards"),
+    validityDays: integer("validity_days").notNull().default(30),
+    deliveryTerms: text("delivery_terms").notNull().default("ex works"),
+    paymentTerms: text("payment_terms").notNull().default("Net 14 days."),
+    termsText: text("terms_text").notNull().default(""),
+
+    // Contacts
+    contacts: jsonb("contacts").$type<TemplateContact[]>().notNull().default(sql`'[]'::jsonb`),
+
+    // Legal footer (Pflichtangaben)
+    managingDirectors: jsonb("managing_directors")
+      .$type<string[]>()
+      .notNull()
+      .default(sql`'[]'::jsonb`),
+    registerCourt: text("register_court").notNull().default(""),
+    registerNumber: text("register_number").notNull().default(""),
+    jurisdiction: text("jurisdiction").notNull().default(""),
+    taxNumber: text("tax_number").notNull().default(""),
+    vatId: text("vat_id").notNull().default(""),
+
+    // Bank accounts
+    bankAccounts: jsonb("bank_accounts")
+      .$type<TemplateBankAccount[]>()
+      .notNull()
+      .default(sql`'[]'::jsonb`),
+
+    // Optional footer logos (storage keys, e.g. certification marks)
+    footerLogos: jsonb("footer_logos").$type<string[]>().notNull().default(sql`'[]'::jsonb`),
+
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("idx_quote_templates_org").on(t.orgId)],
+);
+
+export const quoteTemplatesRelations = relations(quoteTemplates, ({ one }) => ({
+  org: one(orgs, { fields: [quoteTemplates.orgId], references: [orgs.id] }),
+}));

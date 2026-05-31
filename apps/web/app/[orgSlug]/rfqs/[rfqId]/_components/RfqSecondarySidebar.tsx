@@ -2,6 +2,7 @@
 
 import { useSidebarCollapse } from "@/components/sidebar-collapse-context";
 import { type PartStatus, usePartCompletion } from "@/lib/quoting/partCompletion";
+import { useQuoteSentAt } from "@/lib/quoting/quote-store";
 import {
   Check,
   ChevronLeft,
@@ -43,10 +44,15 @@ export function RfqSecondarySidebar({
   parts,
 }: Props) {
   const completion = usePartCompletion(rfqId);
+  const quoteSentAt = useQuoteSentAt(rfqId);
   const { collapsed, setCollapsed } = useSidebarCollapse();
   const pathname = usePathname();
   const isMessaging = pathname.endsWith("/messaging");
   const onQuote = pathname.endsWith("/quote");
+  const onSend = pathname.endsWith("/send");
+  // Index of the active workflow step (estimate → quote → send); earlier steps
+  // render as completed (✓), the current one as active.
+  const currentIdx = onSend ? 2 : onQuote ? 1 : 0;
 
   // The Quote stage unlocks once every part is finalised (Complete or No Bid).
   const allFinalised =
@@ -160,29 +166,39 @@ export function RfqSecondarySidebar({
           */}
           <div className="pb-4">
             {steps.map((step, i) => {
-              const isActive =
-                step.key === "quote" ? onQuote : step.key === "estimate" ? !onQuote : false;
+              const isActive = i === currentIdx;
+              // Once the quote is sent, the Send step stays completed (✓) even
+              // when it is the current step or revisited later.
+              const sendDone = step.key === "send" && !!quoteSentAt;
+              const isCompleted = i < currentIdx || sendDone;
               const isLast = i === steps.length - 1;
+              // Quote + Send are reachable once every part is finalised.
+              const navigable = step.key === "quote" || step.key === "send";
+              const labelDark = isActive || isCompleted;
               return (
                 <div key={step.key} className="flex gap-3">
                   {/* Left col: circle + connector line */}
                   <div className="flex flex-col items-center">
                     <div
-                      className={`w-5 h-5 rounded-full shrink-0 ${
-                        isActive ? "bg-[#2563EB]" : "bg-white border-2 border-[#D1D5DB]"
+                      className={`w-5 h-5 rounded-full shrink-0 flex items-center justify-center ${
+                        isActive || isCompleted
+                          ? "bg-[#2563EB]"
+                          : "bg-white border-2 border-[#D1D5DB]"
                       }`}
-                    />
+                    >
+                      {isCompleted && <Check className="w-3 h-3 text-white" />}
+                    </div>
                     {!isLast && <div className="w-[2px] flex-1 min-h-[16px] bg-[#D1D5DB] mt-1" />}
                   </div>
 
                   {/* Right col: label + optional parts list */}
                   <div className={`min-w-0 ${isLast ? "pb-0" : "pb-4"}`}>
-                    {step.key === "quote" ? (
+                    {navigable ? (
                       allFinalised ? (
                         <Link
-                          href={`/${orgSlug}/rfqs/${rfqNumber}/quote`}
+                          href={`/${orgSlug}/rfqs/${rfqNumber}/${step.key}`}
                           className={`text-sm font-medium leading-5 ${
-                            isActive ? "text-[#1F2937]" : "text-[#2563EB] hover:underline"
+                            labelDark ? "text-[#1F2937]" : "text-[#2563EB] hover:underline"
                           }`}
                         >
                           {step.label}
@@ -198,7 +214,7 @@ export function RfqSecondarySidebar({
                     ) : (
                       <p
                         className={`text-sm font-medium leading-5 ${
-                          isActive ? "text-[#1F2937]" : "text-[#9CA3AF]"
+                          labelDark ? "text-[#1F2937]" : "text-[#9CA3AF]"
                         }`}
                       >
                         {step.label}

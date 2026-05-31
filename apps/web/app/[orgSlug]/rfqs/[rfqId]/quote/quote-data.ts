@@ -71,5 +71,4 @@ export const DEFAULT_QUOTE_NOTE =
 export const QUOTE_CUSTOMER = {
   contact: "Alex Huckstepp",
   organization: "Tesla",
-  quickbooksCustomer: "Tesla",
 };

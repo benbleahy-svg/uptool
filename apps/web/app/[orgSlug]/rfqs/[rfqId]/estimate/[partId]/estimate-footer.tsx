@@ -29,14 +29,15 @@ export function EstimateFooter({
   const index = Math.max(0, partIds.indexOf(currentPartId));
 
   const estimateUrl = (pid: string) => `/${orgSlug}/rfqs/${rfqParam}/estimate/${pid}`;
-  const overviewUrl = `/${orgSlug}/rfqs/${rfqParam}`;
+  const quoteUrl = `/${orgSlug}/rfqs/${rfqParam}/quote`;
 
   function go(targetIndex: number) {
     const pid = partIds[targetIndex];
     if (pid) router.push(estimateUrl(pid));
   }
 
-  // Move to the next part that isn't finalised (completed or no-bid); else exit.
+  // Move to the next part that isn't finalised (completed or no-bid); once every
+  // part is finalised, continue to the quote page.
   function advance() {
     const map = getCompletion(rfqId);
     for (let step = 1; step <= total; step++) {
@@ -48,7 +49,7 @@ export function EstimateFooter({
         return;
       }
     }
-    router.push(overviewUrl);
+    router.push(quoteUrl);
   }
 
   function onNoBid() {

@@ -1,7 +1,6 @@
 "use client";
 
 import { segmentsFromValues } from "@/lib/quoting/estimateTotals";
-import { formatAmount } from "@/lib/quoting/materialCost";
 import {
   HoverCard,
   HoverCardContent,
@@ -12,7 +11,9 @@ import {
   TooltipTrigger,
   cn,
 } from "@uptool/ui";
+import { saveQuoteSnapshot } from "@/lib/quoting/quote-store";
 import { Info, Trash2 } from "lucide-react";
+import { useRouter } from "next/navigation";
 import * as React from "react";
 import { BreakdownBar } from "../_components/breakdown-bar";
 import { CadThumb } from "../_components/cad-thumb";
@@ -21,13 +22,38 @@ import {
   type QuoteGroup,
   type QuoteLine,
   buildInitialLines,
+  buildSnapshot,
   quoteTotalPrice,
   quoteUnitPrice,
 } from "./quote-state";
 
-const money = (n: number) => `${formatAmount(n)} €`;
+interface BulkOption {
+  id: string;
+  leadTime: string;
+  markup: string;
+}
 
-export function QuoteView() {
+// German currency formatting with a fixed 2 decimal places (e.g. 1.234,70 €).
+const money = (n: number) =>
+  `${n.toLocaleString("de-DE", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })} €`;
+
+export function QuoteView({
+  customer = QUOTE_CUSTOMER,
+  orgSlug,
+  rfqParam,
+  rfqId,
+  rfqNumber,
+}: {
+  customer?: typeof QUOTE_CUSTOMER;
+  orgSlug?: string;
+  rfqParam?: string;
+  rfqId?: string;
+  rfqNumber?: number;
+}) {
+  const router = useRouter();
   const [lines, setLines] = React.useState<QuoteLine[]>(buildInitialLines);
   const [selected, setSelected] = React.useState<Set<string>>(new Set());
   const [notes, setNotes] = React.useState<Record<string, string>>(() =>
@@ -38,6 +64,13 @@ export function QuoteView() {
   const [showNoBid, setShowNoBid] = React.useState(false);
   const [showMarkup, setShowMarkup] = React.useState(false);
   const [roundUnit, setRoundUnit] = React.useState(false);
+  // Bulk-action panel (right sidebar): one or more {leadTime, markup} options.
+  // Applying duplicates each selected line into one row per option (see 17.4).
+  const [bulkOptions, setBulkOptions] = React.useState<BulkOption[]>(() => [
+    { id: "opt-base", leadTime: "", markup: "" },
+  ]);
+  const [bulkDismissed, setBulkDismissed] = React.useState(false);
+  const optionSeq = React.useRef(0);
   const [groups, setGroups] = React.useState<QuoteGroup[]>([]);
   const [groupName, setGroupName] = React.useState("Group 1");
   const [toast, setToast] = React.useState<string | null>(null);
@@ -48,6 +81,9 @@ export function QuoteView() {
 
   // Selected-totals summary (only the chosen subset is ever meaningful).
   const selectedLines = lines.filter((l) => selected.has(l.id));
+  // The bulk panel replaces Customer Info at the top of the sidebar while a
+  // selection exists and markup is shown, until the user applies/cancels it.
+  const bulkOpen = showMarkup && selectedLines.length > 0 && !bulkDismissed;
   const selEstimateTotal = selectedLines.reduce((s, l) => s + l.estimateUnitPrice * l.quantity, 0);
   const selQuoteTotal = selectedLines.reduce(
     (s, l) => s + quoteUnitPrice(l.estimateUnitPrice, l.markup, roundUnit) * l.quantity,
@@ -75,6 +111,7 @@ export function QuoteView() {
     });
   }
   function toggleSelect(id: string) {
+    setBulkDismissed(false);
     setSelected((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
@@ -83,7 +120,46 @@ export function QuoteView() {
     });
   }
   function toggleAll() {
+    setBulkDismissed(false);
     setSelected(allSelected ? new Set() : new Set(lines.map((l) => l.id)));
+  }
+  function addOption() {
+    setBulkOptions((prev) => [
+      ...prev,
+      { id: `opt-${optionSeq.current++}`, leadTime: "", markup: "" },
+    ]);
+  }
+  function removeOption(id: string) {
+    setBulkOptions((prev) => (prev.length > 1 ? prev.filter((o) => o.id !== id) : prev));
+  }
+  function updateOption(id: string, patch: Partial<BulkOption>) {
+    setBulkOptions((prev) => prev.map((o) => (o.id === id ? { ...o, ...patch } : o)));
+  }
+  function resetBulkOptions() {
+    optionSeq.current = 0;
+    setBulkOptions([{ id: "opt-base", leadTime: "", markup: "" }]);
+  }
+  // Replace each selected line with one duplicate per option, each carrying that
+  // option's markup + lead time. A single option edits the line in place (it
+  // keeps the original id); extra options become new rows beside it (see 17.4).
+  function applyBulk() {
+    setLines((prev) =>
+      prev.flatMap((line) => {
+        if (!selected.has(line.id)) return [line];
+        return bulkOptions.map((opt, i) => ({
+          ...line,
+          id: i === 0 ? line.id : `${line.id}::${crypto.randomUUID()}`,
+          markup: opt.markup,
+          leadTime: opt.leadTime,
+        }));
+      }),
+    );
+    resetBulkOptions();
+    setBulkDismissed(true);
+  }
+  function cancelBulk() {
+    resetBulkOptions();
+    setBulkDismissed(true);
   }
   function resetAll() {
     setLines(buildInitialLines());
@@ -109,10 +185,19 @@ export function QuoteView() {
         0,
       );
   }
+  // "Preview Quote": persist the quote (number + current lines/variants/notes)
+  // to the client store, then navigate to the Send page. Quote number is stubbed
+  // to the RFQ number for now (no DB persistence yet — see quote-store.ts).
   function preview() {
-    setToast("Preview coming soon");
-    if (toastTimer.current) clearTimeout(toastTimer.current);
-    toastTimer.current = setTimeout(() => setToast(null), 2500);
+    if (!orgSlug || !rfqParam || !rfqId) {
+      setToast("Preview unavailable");
+      if (toastTimer.current) clearTimeout(toastTimer.current);
+      toastTimer.current = setTimeout(() => setToast(null), 2500);
+      return;
+    }
+    const snapshot = buildSnapshot(lines, notes, quoteNote, rfqNumber ?? 0, roundUnit);
+    saveQuoteSnapshot(rfqId, snapshot);
+    router.push(`/${orgSlug}/rfqs/${rfqParam}/send`);
   }
 
   return (
@@ -132,7 +217,10 @@ export function QuoteView() {
                 <ToggleSwitch
                   label="Show Estimate & Markup"
                   checked={showMarkup}
-                  onChange={setShowMarkup}
+                  onChange={(v) => {
+                    setShowMarkup(v);
+                    if (v) setBulkDismissed(false);
+                  }}
                 />
                 <ToggleSwitch
                   label="Round Quote Unit Price"
@@ -315,7 +403,7 @@ export function QuoteView() {
                   </div>
                   <div className="mt-2 flex items-center justify-end gap-2">
                     <span className="text-sm text-gray-500">Estimate total</span>
-                    <HoverCard openDelay={150} closeDelay={0}>
+                    <HoverCard openDelay={150} closeDelay={250}>
                       <HoverCardTrigger asChild>
                         <button
                           type="button"
@@ -325,7 +413,12 @@ export function QuoteView() {
                           <Info className="h-3.5 w-3.5" />
                         </button>
                       </HoverCardTrigger>
-                      <HoverCardContent align="end" side="bottom" className="w-auto p-4">
+                      <HoverCardContent
+                        align="end"
+                        side="bottom"
+                        sideOffset={2}
+                        className="w-auto p-4"
+                      >
                         <BreakdownBar
                           segments={segmentsFromValues(selBreakdown)}
                           className="w-[44rem] max-w-[85vw]"
@@ -406,11 +499,84 @@ export function QuoteView() {
 
           {/* Right column */}
           <aside className="w-[340px] shrink-0 border-l border-gray-200 p-5">
+            {bulkOpen && (
+              <div className="-mx-5 -mt-5 mb-5 border-b border-gray-200 bg-slate-50 px-5 py-4">
+                <h2 className="text-sm font-semibold text-gray-900">
+                  Update {selectedLines.length} Selected
+                </h2>
+                <div className="mt-3 flex items-center gap-3 text-xs font-medium text-gray-600">
+                  <span className="flex-1">Lead Time</span>
+                  <span className="w-20 text-right">Markup</span>
+                  <span className="w-4 shrink-0" />
+                </div>
+                <div className="mt-1.5 space-y-2">
+                  {bulkOptions.map((opt, i) => (
+                    <div key={opt.id} className="flex items-center gap-3">
+                      <input
+                        type="text"
+                        value={opt.leadTime}
+                        onChange={(e) => updateOption(opt.id, { leadTime: e.target.value })}
+                        placeholder="e.g. 3 weeks"
+                        aria-label="Lead time"
+                        className="min-w-0 flex-1 rounded border border-gray-300 bg-white px-2 py-1.5 text-sm outline-none focus:ring-1 focus:ring-[hsl(var(--ring))]"
+                      />
+                      <span className="flex w-20 shrink-0 items-center gap-1 rounded border border-gray-300 bg-white px-2 py-1.5">
+                        <input
+                          type="text"
+                          inputMode="numeric"
+                          value={opt.markup}
+                          onChange={(e) => updateOption(opt.id, { markup: e.target.value })}
+                          placeholder="0"
+                          aria-label="Markup percent"
+                          className="w-full min-w-0 bg-transparent text-right tabular-nums outline-none"
+                        />
+                        <span className="text-gray-400">%</span>
+                      </span>
+                      {i > 0 ? (
+                        <button
+                          type="button"
+                          onClick={() => removeOption(opt.id)}
+                          aria-label="Remove option"
+                          className="w-4 shrink-0 text-gray-300 transition-colors hover:text-red-500"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      ) : (
+                        <span className="w-4 shrink-0" />
+                      )}
+                    </div>
+                  ))}
+                </div>
+                <button
+                  type="button"
+                  onClick={addOption}
+                  className="mt-2 w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-600 transition-colors hover:bg-gray-50"
+                >
+                  Add Option
+                </button>
+                <div className="mt-4 flex justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={cancelBulk}
+                    className="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={applyBulk}
+                    className="rounded-md bg-[hsl(var(--primary))] px-3 py-1.5 text-sm font-medium text-[hsl(var(--primary-foreground))] transition-colors hover:bg-[hsl(var(--primary)/0.9)]"
+                  >
+                    Apply
+                  </button>
+                </div>
+              </div>
+            )}
+
             <h2 className="text-sm font-semibold text-gray-900">Customer Information</h2>
             <dl className="mt-2 space-y-1 text-sm">
-              <Field label="Contact" value={QUOTE_CUSTOMER.contact} />
-              <Field label="Organization" value={QUOTE_CUSTOMER.organization} />
-              <Field label="QuickBooks Online Customer" value={QUOTE_CUSTOMER.quickbooksCustomer} />
+              <Field label="Contact" value={customer.contact} />
+              <Field label="Organization" value={customer.organization} />
             </dl>
 
             <h2 className="mt-6 text-sm font-semibold text-gray-900">Add Notes to Quote</h2>
@@ -431,7 +597,7 @@ export function QuoteView() {
             onClick={preview}
             className="rounded-md bg-[hsl(var(--primary))] px-4 py-2 text-sm font-medium text-[hsl(var(--primary-foreground))] transition-colors hover:bg-[hsl(var(--primary)/0.9)]"
           >
-            Preview Quote and Update QB
+            Preview Quote
           </button>
         </div>
 
@@ -472,8 +638,8 @@ function ToggleSwitch({
       >
         <span
           className={cn(
-            "absolute top-0.5 h-4 w-4 rounded-full bg-white transition-transform",
-            checked ? "translate-x-[18px]" : "translate-x-0.5",
+            "absolute left-0.5 top-0.5 h-4 w-4 rounded-full bg-white transition-transform",
+            checked ? "translate-x-4" : "translate-x-0",
           )}
         />
       </span>

@@ -3,7 +3,8 @@
 import { getCostShares } from "@/lib/quoting/estimateResults";
 import type { BreakdownKey } from "@/lib/quoting/estimateTotals";
 import { parseDecimal } from "@/lib/quoting/materialCost";
-import { QUOTE_PARTS } from "./quote-data";
+import type { QuoteDocItem, QuoteSnapshot } from "@/lib/quoting/quote-store";
+import { DEFAULT_QUOTE_NOTE, QUOTE_PARTS } from "./quote-data";
 
 /** Absolute four-category cost split for a line (sums to its estimate total). */
 export type LineBreakdown = Record<BreakdownKey, number>;
@@ -66,4 +67,45 @@ export function quoteTotalPrice(
   round: boolean,
 ): number {
   return quoteUnitPrice(estimate, markup, round) * quantity;
+}
+
+/**
+ * Snapshots the current quote (lines grouped by part, with computed prices) for
+ * the Send page. Carries the applied variant rows and their lead times verbatim.
+ */
+export function buildSnapshot(
+  lines: QuoteLine[],
+  notes: Record<string, string>,
+  quoteNote: string,
+  quoteNumber: number,
+  round: boolean,
+): QuoteSnapshot {
+  const items: QuoteDocItem[] = [];
+  for (const part of QUOTE_PARTS) {
+    if (part.noBid) continue;
+    const partLines = lines.filter((l) => l.partId === part.partId);
+    if (partLines.length === 0) continue;
+    items.push({
+      partId: part.partId,
+      partNumber: part.partNumber,
+      revision: part.revision,
+      description: part.description,
+      note: notes[part.partId] ?? part.defaultNote,
+      rows: partLines.map((l) => {
+        const unit = quoteUnitPrice(l.estimateUnitPrice, l.markup, round);
+        return {
+          quantity: l.quantity,
+          leadTime: l.leadTime,
+          unitPrice: unit,
+          totalPrice: unit * l.quantity,
+        };
+      }),
+    });
+  }
+  return { quoteNumber, quoteNote, items };
+}
+
+/** Fallback snapshot from the base lines (e.g. /send reached without a saved quote). */
+export function buildDefaultSnapshot(quoteNumber: number): QuoteSnapshot {
+  return buildSnapshot(buildInitialLines(), {}, DEFAULT_QUOTE_NOTE, quoteNumber, false);
 }
