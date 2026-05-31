@@ -7,6 +7,10 @@ import {
 import { helloWorldProcessor } from "./processors/hello-world";
 import { pollEmailAccountProcessor } from "./processors/poll-email-account";
 import { ingestEmailProcessor } from "./processors/ingest-email";
+import {
+  closeRenderer,
+  renderCadThumbnailProcessor,
+} from "./processors/render-cad-thumbnail";
 import { scheduleEmailPolls } from "./scheduler";
 import { logger } from "./logger";
 
@@ -19,11 +23,18 @@ const ingestWorker = new Worker(QUEUE_NAMES.INGEST_EMAIL, ingestEmailProcessor, 
   connection,
   concurrency: 10,
 });
+// Capped concurrency: each render holds a headless browser page + WebGL context.
+const renderCadWorker = new Worker(
+  QUEUE_NAMES.RENDER_CAD_THUMBNAIL,
+  renderCadThumbnailProcessor,
+  { connection, concurrency: 2 },
+);
 
 for (const [worker, name] of [
   [helloWorker, QUEUE_NAMES.HELLO_WORLD],
   [pollWorker, QUEUE_NAMES.POLL_EMAIL_ACCOUNT],
   [ingestWorker, QUEUE_NAMES.INGEST_EMAIL],
+  [renderCadWorker, QUEUE_NAMES.RENDER_CAD_THUMBNAIL],
 ] as const) {
   worker.on("completed", (job) => logger.info({ jobId: job.id, queue: name }, "Job completed"));
   worker.on("failed", (job, err) =>
@@ -49,7 +60,13 @@ setInterval(() => {
 // Graceful shutdown
 async function shutdown() {
   logger.info("Shutting down worker");
-  await Promise.all([helloWorker.close(), pollWorker.close(), ingestWorker.close()]);
+  await Promise.all([
+    helloWorker.close(),
+    pollWorker.close(),
+    ingestWorker.close(),
+    renderCadWorker.close(),
+  ]);
+  await closeRenderer();
   process.exit(0);
 }
 process.on("SIGTERM", shutdown);

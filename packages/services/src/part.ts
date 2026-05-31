@@ -1,5 +1,5 @@
-import { db, partOperations, parts } from "@uptool/db";
-import { and, eq } from "drizzle-orm";
+import { attachments, db, partOperations, parts } from "@uptool/db";
+import { and, eq, isNull, or } from "drizzle-orm";
 
 export const DEFAULT_QUANTITY_BREAKS = [1, 10, 100] as const;
 
@@ -168,6 +168,68 @@ export const partService = {
     await db
       .update(parts)
       .set({ notesExternal, notesInternal })
+      .where(and(eq(parts.id, partId), eq(parts.orgId, orgId)));
+  },
+
+  // ─── CAD thumbnail pipeline ──────────────────────────────────────────────
+  // Thumbnails are rendered off the request path by the worker (see
+  // apps/worker render-cad-thumbnail). status: null = no CAD linked,
+  // 'pending' = render queued, 'ready' = thumbnailKey set, 'failed' = retryable.
+
+  /** The CAD attachment linked to a part, if any. Used to build a render job. */
+  async findCadForPart(orgId: string, partId: string) {
+    return db.query.attachments.findFirst({
+      where: (a, { and, eq }) =>
+        and(eq(a.orgId, orgId), eq(a.partId, partId), eq(a.category, "cad")),
+      columns: { id: true, storageKey: true, filename: true },
+    });
+  },
+
+  /**
+   * Parts that have a CAD file but no usable thumbnail yet (never rendered or
+   * the last render failed). Drives idempotent enqueue-on-load + retry.
+   */
+  async findPartsNeedingThumbnail(orgId: string, rfqId?: string) {
+    const rows = await db
+      .select({
+        partId: parts.id,
+        attachmentId: attachments.id,
+        storageKey: attachments.storageKey,
+        filename: attachments.filename,
+      })
+      .from(parts)
+      .innerJoin(
+        attachments,
+        and(eq(attachments.partId, parts.id), eq(attachments.category, "cad")),
+      )
+      .where(
+        and(
+          eq(parts.orgId, orgId),
+          rfqId ? eq(parts.rfqId, rfqId) : undefined,
+          or(isNull(parts.thumbnailStatus), eq(parts.thumbnailStatus, "failed")),
+        ),
+      );
+    return rows;
+  },
+
+  async markThumbnailPending(orgId: string, partId: string) {
+    await db
+      .update(parts)
+      .set({ thumbnailStatus: "pending" })
+      .where(and(eq(parts.id, partId), eq(parts.orgId, orgId)));
+  },
+
+  async markThumbnailReady(orgId: string, partId: string, thumbnailKey: string) {
+    await db
+      .update(parts)
+      .set({ thumbnailStatus: "ready", thumbnailKey })
+      .where(and(eq(parts.id, partId), eq(parts.orgId, orgId)));
+  },
+
+  async markThumbnailFailed(orgId: string, partId: string) {
+    await db
+      .update(parts)
+      .set({ thumbnailStatus: "failed" })
       .where(and(eq(parts.id, partId), eq(parts.orgId, orgId)));
   },
 

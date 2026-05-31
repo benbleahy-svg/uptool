@@ -30,6 +30,13 @@
     }
   },
   "files": {
-    "ignore": ["node_modules", ".next", "dist", "build", "packages/db/migrations"]
+    "ignore": [
+      "node_modules",
+      ".next",
+      "dist",
+      "build",
+      "packages/db/migrations",
+      "apps/worker/src/cad-render/vendor"
+    ]
   }
 }

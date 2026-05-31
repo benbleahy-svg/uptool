@@ -5,6 +5,7 @@ import { auth } from "@/auth";
 import { rfqService, memberService, storageService } from "@uptool/services";
 import { RfqTable, type RfqRow } from "./rfq-table";
 import { createManualRfq } from "./actions";
+import { ensureThumbnails } from "@/lib/cad-thumbnail-queue";
 
 interface Props {
   params: Promise<{ orgSlug: string }>;
@@ -28,6 +29,27 @@ export default async function RfqsPage({ params }: Props) {
     org.logoUrl ? storageService.presignedUrl(org.logoUrl, 3600) : Promise.resolve(null),
   ]);
 
+  // Kick off any missing/failed CAD thumbnail renders off the request path.
+  // Idempotent; never block the dashboard if Redis is unavailable.
+  await ensureThumbnails(org.id).catch(() => {});
+
+  // Presign thumbnails for parts that have a ready render (mirrors the org-logo
+  // precedent above). Done once across all rows to cap presign calls.
+  const readyKeys = [
+    ...new Set(
+      rfqs.flatMap((r) =>
+        r.parts.filter((p) => p.thumbnailStatus === "ready" && p.thumbnailKey).map((p) => p.thumbnailKey as string),
+      ),
+    ),
+  ];
+  const thumbUrlByKey = new Map(
+    await Promise.all(
+      readyKeys.map(
+        async (key) => [key, await storageService.presignedUrl(key, 3600)] as const,
+      ),
+    ),
+  );
+
   const rows: RfqRow[] = rfqs.map((r) => ({
     id: r.id,
     rfqNumber: r.rfqNumber,
@@ -41,6 +63,10 @@ export default async function RfqsPage({ params }: Props) {
     assigneeName: r.assignee?.name ?? null,
     assigneeId: r.assigneeId ?? null,
     partCount: r.parts.length,
+    parts: r.parts.map((p) => ({
+      status: p.thumbnailStatus,
+      url: p.thumbnailKey ? (thumbUrlByKey.get(p.thumbnailKey) ?? null) : null,
+    })),
   }));
 
   const [tTable, tStatus, tDash, tRfq, tCommon, tDate] = await Promise.all([

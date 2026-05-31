@@ -11,11 +11,13 @@ export const QUEUE_NAMES = {
   HELLO_WORLD: "hello-world",
   POLL_EMAIL_ACCOUNT: "poll-email-account",
   INGEST_EMAIL: "ingest-email",
+  RENDER_CAD_THUMBNAIL: "render-cad-thumbnail",
 } as const;
 
 export const helloWorldQueue = new Queue(QUEUE_NAMES.HELLO_WORLD, { connection });
 export const pollEmailAccountQueue = new Queue(QUEUE_NAMES.POLL_EMAIL_ACCOUNT, { connection });
 export const ingestEmailQueue = new Queue(QUEUE_NAMES.INGEST_EMAIL, { connection });
+export const renderCadThumbnailQueue = new Queue(QUEUE_NAMES.RENDER_CAD_THUMBNAIL, { connection });
 
 export interface PollEmailAccountJobData {
   emailAccountId: string;
@@ -40,4 +42,12 @@ export interface IngestEmailJobData {
     sizeBytes: number;
     dataBase64: string; // Buffer serialised as base64
   }>;
+}
+
+export interface RenderCadThumbnailJobData {
+  orgId: string;
+  partId: string;
+  attachmentId: string;
+  storageKey: string; // CAD object key (immutable — safe to carry on the job)
+  filename: string; // for the extension; the renderer keys off it
 }

@@ -28,6 +28,9 @@ export type RfqRow = {
   assigneeName: string | null;
   assigneeId: string | null;
   partCount: number;
+  // One entry per part: a ready thumbnail has a presigned `url`; otherwise the
+  // render is pending/failed/not-started and we show a placeholder.
+  parts: Array<{ status: string | null; url: string | null }>;
 };
 
 // ─── Org logo ─────────────────────────────────────────────────────────────────
@@ -98,15 +101,34 @@ function StatusPill({ status, label }: { status: RfqRow["status"]; label: string
 
 // ─── Parts cell ───────────────────────────────────────────────────────────────
 
-function PartThumb() {
+function PartThumb({ part }: { part?: { status: string | null; url: string | null } }) {
+  if (part?.url) {
+    return (
+      <img
+        src={part.url}
+        alt=""
+        className="h-7 w-7 rounded-md object-cover bg-white ring-1 ring-[hsl(var(--border))]"
+      />
+    );
+  }
+  // pending = render queued (subtle pulse); failed / not-started = static box.
+  const pending = part?.status === "pending";
   return (
-    <div className="flex h-7 w-7 items-center justify-center rounded-md bg-[hsl(0_0%_96%)]">
+    <div
+      className={`flex h-7 w-7 items-center justify-center rounded-md bg-[hsl(0_0%_96%)] ${pending ? "animate-pulse" : ""}`}
+    >
       <Box className="h-3.5 w-3.5 text-[hsl(215_16%_47%)]" />
     </div>
   );
 }
 
-function PartsCell({ count }: { count: number }) {
+function PartsCell({
+  count,
+  parts,
+}: {
+  count: number;
+  parts: Array<{ status: string | null; url: string | null }>;
+}) {
   return (
     <div className="flex items-center gap-1.5">
       <span
@@ -114,9 +136,11 @@ function PartsCell({ count }: { count: number }) {
       >
         {count}
       </span>
-      {count > 0 && <PartThumb />}
-      {count > 1 && <PartThumb />}
-      {count > 2 && <PartThumb />}
+      {parts.slice(0, 3).map((part, i) => (
+        // Parts are positional within a row; index keying is stable here.
+        // biome-ignore lint/suspicious/noArrayIndexKey: positional thumbnails
+        <PartThumb key={i} part={part} />
+      ))}
     </div>
   );
 }
@@ -409,7 +433,7 @@ export function RfqTable({
     }),
     columnHelper.accessor("partCount", {
       header: labels.parts,
-      cell: (info) => <PartsCell count={info.getValue()} />,
+      cell: (info) => <PartsCell count={info.getValue()} parts={info.row.original.parts} />,
       size: 640,
     }),
     columnHelper.accessor("status", {

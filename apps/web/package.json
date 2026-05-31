@@ -20,6 +20,7 @@
     "@uptool/services": "workspace:*",
     "@uptool/shared": "workspace:*",
     "@uptool/ui": "workspace:*",
+    "bullmq": "^5.34.5",
     "date-fns": "^4.3.0",
     "drizzle-orm": "^0.39.1",
     "lucide-react": "^0.469.0",

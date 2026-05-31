@@ -1,0 +1,77 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        background: #ffffff;
+      }
+      /* Square viewport — the canonical thumbnail frame. */
+      #v {
+        width: 256px;
+        height: 256px;
+      }
+    </style>
+    <script src="/o3dv.min.js"></script>
+  </head>
+  <body>
+    <div id="v"></div>
+    <script>
+      // Render one CAD model with the SAME EmbeddedViewer config + default camera
+      // + fit-to-view as the in-app viewer (cad-canvas.tsx), so thumbnails match.
+      // Resolves once a frame has painted; rejects on load failure / timeout.
+      window.__renderCad = function (url) {
+        return new Promise(function (resolve, reject) {
+          var settled = false;
+          var fail = function (e) {
+            if (settled) return;
+            settled = true;
+            reject(new Error(String((e && e.message) || e || "render-failed")));
+          };
+          var ok = function () {
+            if (settled) return;
+            settled = true;
+            resolve(true);
+          };
+          var timer = setTimeout(function () {
+            fail("render-timeout");
+          }, 22000);
+          try {
+            var el = document.getElementById("v");
+            var viewer = new OV.EmbeddedViewer(el, {
+              backgroundColor: new OV.RGBAColor(255, 255, 255, 255),
+              defaultColor: new OV.RGBColor(184, 188, 194),
+              onModelLoaded: function () {
+                try {
+                  var v = viewer.GetViewer();
+                  v.FitSphereToWindow(
+                    v.GetBoundingSphere(function () {
+                      return true;
+                    }),
+                    false,
+                  );
+                } catch (e) {
+                  /* viewer not ready — still capture whatever rendered */
+                }
+                // Let three.js paint a couple of frames before we capture.
+                requestAnimationFrame(function () {
+                  requestAnimationFrame(function () {
+                    clearTimeout(timer);
+                    ok();
+                  });
+                });
+              },
+            });
+            viewer.LoadModelFromUrlList([url]);
+          } catch (e) {
+            clearTimeout(timer);
+            fail(e);
+          }
+        });
+      };
+    </script>
+  </body>
+</html>

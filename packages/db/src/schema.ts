@@ -442,9 +442,19 @@ export const parts = pgTable(
     notesInternal: text("notes_internal"),
     materialCostCents: integer("material_cost_cents").notNull().default(0),
     sortOrder: integer("sort_order").notNull().default(0),
+    // CAD thumbnail rendered server-side at ingest (object-storage key + status).
+    // null status = no CAD linked yet.
+    thumbnailKey: text("thumbnail_key"),
+    thumbnailStatus: text("thumbnail_status"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [index("idx_parts_rfq").on(t.rfqId)],
+  (t) => [
+    index("idx_parts_rfq").on(t.rfqId),
+    check(
+      "parts_thumbnail_status_check",
+      sql`${t.thumbnailStatus} IS NULL OR ${t.thumbnailStatus} IN ('pending', 'ready', 'failed')`,
+    ),
+  ],
 );
 
 export const partOperations = pgTable(
