@@ -52,11 +52,15 @@ export function SendClient({
   const [submitted, setSubmitted] = React.useState(false);
   const [pdf, setPdf] = React.useState<{ url: string; blob: Blob } | null>(null);
   const [pdfError, setPdfError] = React.useState(false);
+  const startedRef = React.useRef(false);
+  const urlRef = React.useRef<string | null>(null);
 
-  // Render the PDF once on the server; reuse the blob everywhere.
+  // Render the PDF once on the server; reuse the one blob everywhere (preview,
+  // Download, Print, email attachment). startedRef makes this a single fetch even
+  // under React StrictMode's double-invoke; the data is stable for the page life.
   React.useEffect(() => {
-    let url: string | null = null;
-    let cancelled = false;
+    if (startedRef.current) return;
+    startedRef.current = true;
     fetchQuotePdf({
       orgSlug,
       template,
@@ -65,16 +69,18 @@ export function SendClient({
       positions: positionsFromSnapshot(snapshot),
     })
       .then((blob) => {
-        if (cancelled) return;
-        url = URL.createObjectURL(blob);
-        setPdf({ url, blob });
+        urlRef.current = URL.createObjectURL(blob);
+        setPdf({ url: urlRef.current, blob });
       })
-      .catch(() => !cancelled && setPdfError(true));
-    return () => {
-      cancelled = true;
-      if (url) URL.revokeObjectURL(url);
-    };
+      .catch(() => setPdfError(true));
   }, [orgSlug, template, recipient, info, snapshot]);
+
+  // Revoke the object URL on unmount only — never on re-render.
+  React.useEffect(() => {
+    return () => {
+      if (urlRef.current) URL.revokeObjectURL(urlRef.current);
+    };
+  }, []);
 
   const downloadName = `${template.companyName} Quote ${info.quoteNo} ${info.dateISO.slice(0, 10)}.pdf`;
   const attachmentName = `${template.companyName} Quote ${info.quoteNo}`;

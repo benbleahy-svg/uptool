@@ -5,6 +5,7 @@
 // the preview, Download, Print, and the email attachment all share one render.
 
 import { Download, Printer } from "lucide-react";
+import * as React from "react";
 
 interface Props {
   url: string | null;
@@ -16,20 +17,18 @@ interface Props {
 
 export function QuotePdfPane({ url, loading, error, quoteLabel, downloadName }: Props) {
   const ready = !loading && !error && !!url;
+  const iframeRef = React.useRef<HTMLIFrameElement>(null);
+  // Print is enabled only once the preview iframe has actually loaded the PDF —
+  // so clicking it can never be a silent no-op.
+  const [iframeLoaded, setIframeLoaded] = React.useState(false);
 
+  // Print the already-loaded preview iframe (reuses the same blob — no second
+  // fetch and no zero-size hidden iframe that the PDF plugin won't initialize).
   function handlePrint() {
-    if (!url) return;
-    const frame = document.createElement("iframe");
-    frame.style.cssText = "position:fixed;right:0;bottom:0;width:0;height:0;border:0;";
-    frame.src = url;
-    frame.onload = () => {
-      const win = frame.contentWindow;
-      if (!win) return;
-      win.addEventListener("afterprint", () => frame.remove());
-      win.focus();
-      win.print();
-    };
-    document.body.appendChild(frame);
+    const win = iframeRef.current?.contentWindow;
+    if (!win) return;
+    win.focus();
+    win.print();
   }
 
   return (
@@ -38,8 +37,10 @@ export function QuotePdfPane({ url, loading, error, quoteLabel, downloadName }: 
         <div className="m-auto text-sm text-red-200">Failed to render the quote PDF.</div>
       ) : ready ? (
         <iframe
+          ref={iframeRef}
           src={url ?? undefined}
           title={`Quote ${quoteLabel} preview`}
+          onLoad={() => setIframeLoaded(true)}
           className="w-full max-w-[820px] flex-1 rounded-sm bg-white shadow-2xl"
         />
       ) : (
@@ -51,7 +52,7 @@ export function QuotePdfPane({ url, loading, error, quoteLabel, downloadName }: 
         <button
           type="button"
           onClick={handlePrint}
-          disabled={!ready}
+          disabled={!ready || !iframeLoaded}
           aria-label="Print quote"
           className="flex h-10 w-10 items-center justify-center rounded-full bg-white text-gray-700 shadow transition-colors hover:bg-gray-100 disabled:opacity-50"
         >

@@ -180,8 +180,18 @@ export function QuoteDocument({ template: tpl, recipient, info, positions }: Quo
   const validUntil = validUntilISO(info.dateISO, tpl.validityDays);
   const subject = tpl.subjectTemplate
     .replace(/\{quoteNo\}/g, info.quoteNo)
+    .replace(/\{quoteNumber\}/g, info.quoteNo)
     .replace(/\{projectNo\}/g, info.projectNo);
   const showRegister = isRegisteredForm(tpl.legalForm);
+
+  // Empty-value omission (FIX 1): drop blanks so no label renders without a value.
+  const cityLine = [tpl.postalCode, tpl.city].filter(Boolean).join(" ");
+  const senderLine = [tpl.companyName, tpl.street, cityLine].filter(Boolean).join(" · ");
+  const recipientCityLine = [recipient.postalCode, recipient.city].filter(Boolean).join(" ");
+  const directors = tpl.managingDirectors.filter((d) => d.trim() !== "");
+  const visibleContacts = tpl.contacts.filter((c) => c.name.trim() !== "");
+  const visibleBanks = tpl.bankAccounts.filter((b) => b.bankName || b.iban || b.bic);
+  const hasRegister = showRegister && (!!tpl.registerCourt || !!tpl.registerNumber);
 
   return (
     <Document title={`${strings.quoteNo} ${info.quoteNo}`} author={tpl.companyName}>
@@ -201,13 +211,13 @@ export function QuoteDocument({ template: tpl, recipient, info, positions }: Quo
         {/* 2–4 — Sender line, recipient, info block */}
         <View style={s.addrRow}>
           <View style={s.addrCol}>
-            <Text style={s.senderLine}>
-              {`${tpl.companyName} · ${tpl.street} · ${tpl.postalCode} ${tpl.city}`}
-            </Text>
-            <Text style={s.recipientName}>{recipient.organization}</Text>
+            <Text style={s.senderLine}>{senderLine}</Text>
+            {recipient.organization ? (
+              <Text style={s.recipientName}>{recipient.organization}</Text>
+            ) : null}
             {recipient.contactName ? <Text>{recipient.contactName}</Text> : null}
             {recipient.street ? <Text>{recipient.street}</Text> : null}
-            <Text>{`${recipient.postalCode} ${recipient.city}`.trim()}</Text>
+            {recipientCityLine ? <Text>{recipientCityLine}</Text> : null}
             {recipient.country ? <Text>{recipient.country}</Text> : null}
           </View>
           <View style={s.infoCol}>
@@ -313,11 +323,11 @@ export function QuoteDocument({ template: tpl, recipient, info, positions }: Quo
           ) : null}
         </View>
 
-        {/* 10 — Contacts */}
-        {tpl.contacts.length > 0 && (
+        {/* 10 — Contacts (omit contacts with no name; omit block if none) */}
+        {visibleContacts.length > 0 && (
           <View style={s.contactsBlock}>
             <Text style={s.contactsIntro}>{strings.contactsIntro}</Text>
-            {tpl.contacts.map((c) => (
+            {visibleContacts.map((c) => (
               <View key={`${c.name}-${c.email}`} style={s.contactRow}>
                 <Text>
                   {c.roleLabel ? `${c.roleLabel}: ` : ""}
@@ -347,42 +357,45 @@ export function QuoteDocument({ template: tpl, recipient, info, positions }: Quo
           render={({ pageNumber, totalPages }) => `${strings.sheet} ${pageNumber} / ${totalPages}`}
         />
 
-        {/* 13 — Legal footer on every page */}
+        {/* 13 — Four-column legal footer on every page. Empty rows omitted per
+            column (FIX 1) so no label renders without a value. */}
         <View style={s.footer} fixed>
           <View style={s.footerCols}>
+            {/* Col 1 — company + full address */}
             <View style={s.footerCol}>
-              <Text style={s.ftStrong}>{tpl.companyName}</Text>
-              <Text style={s.ftText}>{tpl.street}</Text>
-              <Text style={s.ftText}>{`${tpl.postalCode} ${tpl.city}`}</Text>
-              <Text style={s.ftText}>{tpl.country}</Text>
+              {tpl.companyName ? <Text style={s.ftStrong}>{tpl.companyName}</Text> : null}
+              {tpl.street ? <Text style={s.ftText}>{tpl.street}</Text> : null}
+              {cityLine ? <Text style={s.ftText}>{cityLine}</Text> : null}
+              {tpl.country ? <Text style={s.ftText}>{tpl.country}</Text> : null}
             </View>
+            {/* Col 2 — phone / fax / email / website */}
             <View style={s.footerCol}>
               {tpl.phone ? <Text style={s.ftText}>{`${strings.tel} ${tpl.phone}`}</Text> : null}
               {tpl.fax ? <Text style={s.ftText}>{`${strings.fax} ${tpl.fax}`}</Text> : null}
               {tpl.email ? <Text style={s.ftText}>{`${strings.emailLabel} ${tpl.email}`}</Text> : null}
               {tpl.website ? <Text style={s.ftText}>{`${strings.web} ${tpl.website}`}</Text> : null}
             </View>
+            {/* Col 3 — jurisdiction / register / directors / tax / VAT */}
             <View style={s.footerCol}>
               {tpl.jurisdiction ? (
                 <Text style={s.ftText}>{`${strings.jurisdiction} ${tpl.jurisdiction}`}</Text>
               ) : null}
-              {showRegister && (tpl.registerCourt || tpl.registerNumber) ? (
+              {hasRegister ? (
                 <Text style={s.ftText}>
-                  {`${strings.commercialRegister} ${tpl.registerCourt} ${tpl.registerNumber}`.trim()}
+                  {`${strings.commercialRegister} ${[tpl.registerCourt, tpl.registerNumber].filter(Boolean).join(" ")}`}
                 </Text>
               ) : null}
-              {tpl.managingDirectors.length > 0 ? (
-                <Text style={s.ftText}>
-                  {`${strings.managingDirectors} ${tpl.managingDirectors.join(", ")}`}
-                </Text>
+              {directors.length > 0 ? (
+                <Text style={s.ftText}>{`${strings.managingDirectors} ${directors.join(", ")}`}</Text>
               ) : null}
               {tpl.taxNumber ? (
                 <Text style={s.ftText}>{`${strings.taxNumber} ${tpl.taxNumber}`}</Text>
               ) : null}
               {tpl.vatId ? <Text style={s.ftText}>{`${strings.vatIdLabel} ${tpl.vatId}`}</Text> : null}
             </View>
+            {/* Col 4 — bank account(s), each on its own line */}
             <View style={s.footerCol}>
-              {tpl.bankAccounts.map((b) => (
+              {visibleBanks.map((b) => (
                 <View key={b.iban || b.bankName} style={{ marginBottom: 2 }}>
                   {b.bankName ? <Text style={s.ftStrong}>{b.bankName}</Text> : null}
                   {b.iban ? <Text style={s.ftText}>{`${strings.iban} ${b.iban}`}</Text> : null}
