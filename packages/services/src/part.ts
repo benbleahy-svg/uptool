@@ -75,6 +75,17 @@ export const partService = {
     await db.delete(parts).where(and(eq(parts.id, partId), eq(parts.orgId, orgId)));
   },
 
+  /**
+   * Persist a part's No-Bid decision (mirrors the estimation UI's session state).
+   * An RFQ where every part is no-bid derives as Declined (see getRfqStatus).
+   */
+  async setNoBid(orgId: string, partId: string, isNoBid: boolean) {
+    await db
+      .update(parts)
+      .set({ isNoBid })
+      .where(and(eq(parts.id, partId), eq(parts.orgId, orgId)));
+  },
+
   async findByRfq(orgId: string, rfqId: string) {
     return db.query.parts.findMany({
       where: (p, { and, eq }) => and(eq(p.orgId, orgId), eq(p.rfqId, rfqId)),

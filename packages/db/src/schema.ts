@@ -241,6 +241,10 @@ export const rfqs = pgTable(
     source: rfqSourceEnum("source").notNull().default("manual"),
     quantityBreaks: integer("quantity_breaks").array().notNull().default([1, 10, 100]),
     status: rfqStatusEnum("status").notNull().default("new"),
+    // Explicit whole-RFQ decline (No Bid). Set = declined regardless of part state;
+    // the timestamp also feeds the later decline follow-up email.
+    declinedAt: timestamp("declined_at", { withTimezone: true }),
+    declinedReason: text("declined_reason"),
     assigneeId: uuid("assignee_id").references(() => users.id, { onDelete: "set null" }),
     receivedAt: timestamp("received_at", { withTimezone: true }).notNull(),
     lastEmailAt: timestamp("last_email_at", { withTimezone: true }),
@@ -442,6 +446,9 @@ export const parts = pgTable(
     notesInternal: text("notes_internal"),
     materialCostCents: integer("material_cost_cents").notNull().default(0),
     sortOrder: integer("sort_order").notNull().default(0),
+    // Persisted part-level No-Bid (mirrors the estimation UI's per-part decision).
+    // An RFQ where every part is no-bid derives as Declined.
+    isNoBid: boolean("is_no_bid").notNull().default(false),
     // CAD thumbnail rendered server-side at ingest (object-storage key + status).
     // null status = no CAD linked yet.
     thumbnailKey: text("thumbnail_key"),

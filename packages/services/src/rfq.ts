@@ -173,7 +173,13 @@ export const rfqService = {
           assignee: true,
           attachments: true,
           parts: {
-            columns: { id: true, thumbnailKey: true, thumbnailStatus: true, sortOrder: true },
+            columns: {
+              id: true,
+              thumbnailKey: true,
+              thumbnailStatus: true,
+              sortOrder: true,
+              isNoBid: true,
+            },
             orderBy: (p, { asc }) => [asc(p.sortOrder), asc(p.createdAt)],
           },
         },
@@ -194,7 +200,7 @@ export const rfqService = {
           emailAccount: true,
           attachments: true,
           parts: {
-            columns: { id: true, partNumber: true, revision: true, description: true, material: true, processType: true, sortOrder: true },
+            columns: { id: true, partNumber: true, revision: true, description: true, material: true, processType: true, sortOrder: true, isNoBid: true },
             orderBy: (p, { asc }) => [asc(p.sortOrder)],
           },
           threads: {
@@ -221,7 +227,7 @@ export const rfqService = {
           emailAccount: true,
           attachments: true,
           parts: {
-            columns: { id: true, partNumber: true, revision: true, description: true, material: true, processType: true, sortOrder: true },
+            columns: { id: true, partNumber: true, revision: true, description: true, material: true, processType: true, sortOrder: true, isNoBid: true },
             orderBy: (p, { asc }) => [asc(p.sortOrder)],
           },
           threads: {
@@ -305,6 +311,25 @@ export const rfqService = {
       await tx
         .update(rfqs)
         .set({ status, updatedAt: new Date() })
+        .where(and(eq(rfqs.id, rfqId), eq(rfqs.orgId, orgId)));
+    });
+  },
+
+  /**
+   * Explicitly decline (No Bid) a whole RFQ. Stamps `declinedAt = now` (drives the
+   * derived Declined status + the later decline follow-up email) and sets the
+   * stored status to `no_bid` so list filters/sorts stay consistent.
+   */
+  async decline(orgId: string, rfqId: string, reason?: string) {
+    return withOrgContext(orgId, async (tx) => {
+      await tx
+        .update(rfqs)
+        .set({
+          status: "no_bid",
+          declinedAt: new Date(),
+          declinedReason: reason ?? null,
+          updatedAt: new Date(),
+        })
         .where(and(eq(rfqs.id, rfqId), eq(rfqs.orgId, orgId)));
     });
   },

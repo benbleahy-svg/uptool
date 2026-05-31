@@ -117,6 +117,29 @@ export async function updateRfqStatus(formData: FormData) {
   redirect(`/${orgSlug}/rfqs`);
 }
 
+/**
+ * Decline (No Bid) a whole RFQ. Shared by both entry points: the RFQ overview
+ * "No Bid RFQ" button and the dashboard row actions menu. Sets the explicit
+ * decline flag; revalidates the list + overview without redirecting so the
+ * caller's page updates in place.
+ */
+export async function declineRfq(formData: FormData) {
+  const { userId } = await requireAuth();
+  const orgSlug = formData.get("orgSlug") as string;
+  const rfqId = formData.get("rfqId") as string;
+  const reason = (formData.get("reason") as string) || undefined;
+
+  const org = await db.query.orgs.findFirst({ where: (o, { eq }) => eq(o.slug, orgSlug) });
+  if (!org) throw new Error("Org not found");
+  const membership = await db.query.memberships.findFirst({
+    where: (m, { and, eq }) => and(eq(m.orgId, org.id), eq(m.userId, userId)),
+  });
+  if (!membership) throw new Error("Not a member");
+
+  await rfqService.decline(org.id, rfqId, reason);
+  revalidatePath(`/${orgSlug}/rfqs`, "layout");
+}
+
 export async function assignRfq(formData: FormData) {
   const { userId } = await requireAuth();
   const orgSlug = formData.get("orgSlug") as string;

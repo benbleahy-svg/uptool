@@ -46,6 +46,8 @@ export default async function RfqDetailPage({ params, searchParams }: Props) {
       parts={rfq.parts}
       orgSlug={orgSlug}
       rfqId={rfqId}
+      rfqUuid={rfq.id}
+      declinedAt={rfq.declinedAt?.toISOString() ?? null}
     />
   );
 }

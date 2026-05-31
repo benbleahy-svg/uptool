@@ -169,7 +169,8 @@
       "sent": "Gesendet",
       "won": "Gewonnen",
       "lost": "Verloren",
-      "no_bid": "Kein Angebot"
+      "no_bid": "Kein Angebot",
+      "declined": "Abgelehnt"
     },
     "mark_won": "Gewonnen",
     "mark_no_bid": "Kein Angebot",
@@ -186,6 +187,8 @@
     "assign_unassigned": "Nicht zugewiesen",
     "assign_empty": "Keine Treffer",
     "kebab_no_bid": "Als 'Kein Angebot' markieren",
+    "kebab_decline": "Ablehnen",
+    "kebab_decline_confirm": "Diese Anfrage ablehnen? Sie wird als 'Abgelehnt' markiert.",
     "kebab_archive": "Archivieren",
     "kebab_delete": "Löschen",
     "forwarding_address": "Weiterleitungsadresse",

@@ -42,6 +42,19 @@ export async function addPart(formData: FormData) {
   revalidatePath(`/${orgSlug}/rfqs/${rfqId}/estimate`);
 }
 
+// Persist a part's No-Bid flag (the estimation footer also tracks it in session
+// state for the live UI; this makes it durable so the dashboard can derive
+// Declined when every part is no-bid). No revalidate — the footer drives the UI.
+export async function setPartNoBid(formData: FormData) {
+  const { userId } = await requireAuth();
+  const orgSlug = formData.get("orgSlug") as string;
+  const partId = formData.get("partId") as string;
+  const isNoBid = formData.get("isNoBid") === "true";
+  const orgId = await getOrgId(orgSlug, userId);
+
+  await partService.setNoBid(orgId, partId, isNoBid);
+}
+
 export async function deletePart(formData: FormData) {
   const { userId } = await requireAuth();
   const orgSlug = formData.get("orgSlug") as string;

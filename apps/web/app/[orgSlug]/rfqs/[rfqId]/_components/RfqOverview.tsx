@@ -19,7 +19,8 @@ import {
 } from "lucide-react";
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useState, useTransition } from "react";
+import { declineRfq } from "../../actions";
 import { CadThumb } from "./cad-thumb";
 
 const PdfThumb = dynamic(() => import("./pdf-thumb").then((m) => m.PdfThumb), { ssr: false });
@@ -61,6 +62,9 @@ interface Props {
   parts: Part[];
   orgSlug: string;
   rfqId: string;
+  // The RFQ's UUID (rfqId may be the rfq_number from the URL) — used for actions.
+  rfqUuid: string;
+  declinedAt: string | null;
 }
 
 const PROCESS_LABEL: Record<string, string> = {
@@ -102,9 +106,25 @@ export function RfqOverview({
   parts,
   orgSlug,
   rfqId,
+  rfqUuid,
+  declinedAt,
 }: Props) {
   const router = useRouter();
+  const [isPending, startTransition] = useTransition();
   const [showHint, setShowHint] = useState(true);
+  const isDeclined = declinedAt !== null;
+
+  function handleDecline() {
+    // Whole-RFQ decline (No Bid). Meaningful state change — confirm first.
+    if (!window.confirm("Decline this RFQ? It will be marked as Declined.")) return;
+    const fd = new FormData();
+    fd.set("orgSlug", orgSlug);
+    fd.set("rfqId", rfqUuid);
+    startTransition(async () => {
+      await declineRfq(fd);
+      router.refresh();
+    });
+  }
   const [activeCategories, setActiveCategories] = useState<Set<string>>(
     new Set(["drawing", "cad", "bom", "other"]),
   );
@@ -473,9 +493,11 @@ export function RfqOverview({
       <div className="shrink-0 border-t border-[hsl(var(--border))] bg-white px-4 py-3 flex items-center justify-end gap-2">
         <button
           type="button"
-          className="text-sm px-4 py-2 bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 rounded-md transition-colors font-medium"
+          onClick={handleDecline}
+          disabled={isDeclined || isPending}
+          className="text-sm px-4 py-2 bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 rounded-md transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-red-50"
         >
-          No Bid RFQ
+          {isDeclined ? "Declined" : "No Bid RFQ"}
         </button>
         <button
           type="button"

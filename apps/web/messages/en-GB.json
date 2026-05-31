@@ -169,7 +169,8 @@
       "sent": "Sent",
       "won": "Won",
       "lost": "Lost",
-      "no_bid": "No bid"
+      "no_bid": "No bid",
+      "declined": "Declined"
     },
     "mark_won": "Mark Won",
     "mark_no_bid": "No Bid",
@@ -186,6 +187,8 @@
     "assign_unassigned": "Unassigned",
     "assign_empty": "No matches",
     "kebab_no_bid": "Mark as No Bid",
+    "kebab_decline": "Decline",
+    "kebab_decline_confirm": "Decline this RFQ? It will be marked as Declined.",
     "kebab_archive": "Archive",
     "kebab_delete": "Delete",
     "forwarding_address": "Forwarding address",

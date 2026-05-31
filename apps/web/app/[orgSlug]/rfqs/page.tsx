@@ -6,6 +6,7 @@ import { rfqService, memberService, storageService } from "@uptool/services";
 import { RfqTable, type RfqRow } from "./rfq-table";
 import { createManualRfq } from "./actions";
 import { ensureThumbnails } from "@/lib/cad-thumbnail-queue";
+import { getRfqStatus } from "@/lib/rfq-status";
 
 interface Props {
   params: Promise<{ orgSlug: string }>;
@@ -57,7 +58,7 @@ export default async function RfqsPage({ params }: Props) {
     contactName: r.contact?.name ?? null,
     contactEmail: r.contact?.email ?? null,
     subject: r.subject ?? null,
-    status: r.status,
+    status: getRfqStatus({ status: r.status, declinedAt: r.declinedAt, parts: r.parts }),
     receivedAt: r.receivedAt.toISOString(),
     lastEmailAt: r.lastEmailAt?.toISOString() ?? null,
     assigneeName: r.assignee?.name ?? null,
@@ -113,7 +114,8 @@ export default async function RfqsPage({ params }: Props) {
           assignSearch: tRfq("assign_search"),
           assignUnassigned: tRfq("assign_unassigned"),
           assignEmpty: tRfq("assign_empty"),
-          kebabNoBid: tRfq("kebab_no_bid"),
+          kebabDecline: tRfq("kebab_decline"),
+          kebabDeclineConfirm: tRfq("kebab_decline_confirm"),
           kebabArchive: tRfq("kebab_archive"),
           kebabDelete: tRfq("kebab_delete"),
           kebabComingSoon: tCommon("coming_soon"),
@@ -133,7 +135,7 @@ export default async function RfqsPage({ params }: Props) {
           sent: tStatus("sent"),
           won: tStatus("won"),
           lost: tStatus("lost"),
-          no_bid: tStatus("no_bid"),
+          declined: tStatus("declined"),
         }}
       />
     </div>

@@ -11,9 +11,10 @@ import {
 import { useRouter } from "next/navigation";
 import { useState, useTransition, useMemo, useRef, useEffect } from "react";
 import { InboxIcon, Search, Info, Plus, MoreVertical, Box } from "lucide-react";
-import { updateRfqStatus } from "./actions";
+import { declineRfq } from "./actions";
 import { AssigneeCell } from "./assignee-cell";
 import type { OrgMember } from "@uptool/services";
+import type { DerivedRfqStatus } from "@/lib/rfq-status";
 
 export type RfqRow = {
   id: string;
@@ -22,7 +23,7 @@ export type RfqRow = {
   contactName: string | null;
   contactEmail: string | null;
   subject: string | null;
-  status: "new" | "estimated" | "quoted" | "sent" | "won" | "lost" | "no_bid";
+  status: DerivedRfqStatus;
   receivedAt: string;
   lastEmailAt: string | null;
   assigneeName: string | null;
@@ -64,7 +65,7 @@ const PILL_FILL: Record<RfqRow["status"], number | "won" | "closed"> = {
   sent: 3,
   won: "won",
   lost: "closed",
-  no_bid: "closed",
+  declined: "closed",
 };
 
 function StatusPill({ status, label }: { status: RfqRow["status"]; label: string }) {
@@ -208,7 +209,13 @@ function KebabMenu({
 }: {
   rfqId: string;
   orgSlug: string;
-  labels: { noBid: string; archive: string; delete: string; comingSoon: string };
+  labels: {
+    decline: string;
+    declineConfirm: string;
+    archive: string;
+    delete: string;
+    comingSoon: string;
+  };
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -223,13 +230,14 @@ function KebabMenu({
     return () => document.removeEventListener("mousedown", onMouseDown);
   }, [open]);
 
-  function handleNoBid() {
+  function handleDecline() {
     setOpen(false);
+    // Meaningful state change — confirm before declining.
+    if (!window.confirm(labels.declineConfirm)) return;
     const fd = new FormData();
     fd.set("orgSlug", orgSlug);
     fd.set("rfqId", rfqId);
-    fd.set("status", "no_bid");
-    startTransition(() => updateRfqStatus(fd));
+    startTransition(() => declineRfq(fd));
   }
 
   return (
@@ -254,10 +262,10 @@ function KebabMenu({
         <div className="absolute right-0 top-full mt-1 z-50 w-52 rounded-md border border-[hsl(var(--border))] bg-white shadow-lg py-1">
           <button
             type="button"
-            onClick={handleNoBid}
+            onClick={handleDecline}
             className="flex w-full items-center px-3 py-2 text-sm hover:bg-[hsl(0_0%_96%)] transition-colors"
           >
-            {labels.noBid}
+            {labels.decline}
           </button>
           <div className="my-1 border-t border-[hsl(var(--border))]" />
           <button
@@ -322,7 +330,8 @@ interface Props {
     assignSearch: string;
     assignUnassigned: string;
     assignEmpty: string;
-    kebabNoBid: string;
+    kebabDecline: string;
+    kebabDeclineConfirm: string;
     kebabArchive: string;
     kebabDelete: string;
     kebabComingSoon: string;
@@ -498,7 +507,8 @@ export function RfqTable({
           rfqId={info.row.original.id}
           orgSlug={orgSlug}
           labels={{
-            noBid: labels.kebabNoBid,
+            decline: labels.kebabDecline,
+            declineConfirm: labels.kebabDeclineConfirm,
             archive: labels.kebabArchive,
             delete: labels.kebabDelete,
             comingSoon: labels.kebabComingSoon,

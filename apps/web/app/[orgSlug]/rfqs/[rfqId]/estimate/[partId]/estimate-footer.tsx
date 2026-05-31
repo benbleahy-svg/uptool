@@ -4,6 +4,7 @@ import { getCompletion, setPartStatus } from "@/lib/quoting/partCompletion";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@uptool/ui";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useRouter } from "next/navigation";
+import { setPartNoBid } from "../actions";
 
 interface Props {
   orgSlug: string;
@@ -52,13 +53,25 @@ export function EstimateFooter({
     router.push(quoteUrl);
   }
 
+  // Mirror the per-part decision to the DB so the dashboard can derive Declined
+  // when every part is no-bid (best-effort; the session state drives the live UI).
+  function persistNoBid(isNoBid: boolean) {
+    const fd = new FormData();
+    fd.set("orgSlug", orgSlug);
+    fd.set("partId", currentPartId);
+    fd.set("isNoBid", String(isNoBid));
+    void setPartNoBid(fd);
+  }
+
   function onNoBid() {
     setPartStatus(rfqId, currentPartId, "noBid");
+    persistNoBid(true);
     advance();
   }
 
   function onComplete() {
     setPartStatus(rfqId, currentPartId, "completed");
+    persistNoBid(false);
     advance();
   }
 
