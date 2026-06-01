@@ -85,6 +85,13 @@ export const orgService = {
       .where(eq(orgs.id, orgId));
   },
 
+  async updateLogoUrl(orgId: string, key: string | null) {
+    await db
+      .update(orgs)
+      .set({ logoUrl: key, updatedAt: new Date() })
+      .where(eq(orgs.id, orgId));
+  },
+
   async updateProfile(
     orgId: string,
     data: {
