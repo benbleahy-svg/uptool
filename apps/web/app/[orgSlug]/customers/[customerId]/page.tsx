@@ -15,8 +15,6 @@ const STATUS_STYLES: Record<string, string> = {
   estimated: "bg-yellow-100 text-yellow-800",
   quoted: "bg-orange-100 text-orange-800",
   sent: "bg-purple-100 text-purple-800",
-  won: "bg-green-100 text-green-800",
-  lost: "bg-red-100 text-red-800",
   no_bid: "bg-gray-100 text-gray-600",
 };
 

@@ -59,6 +59,13 @@ export default async function RfqsPage({ params }: Props) {
     contactEmail: r.contact?.email ?? null,
     subject: r.subject ?? null,
     status: getRfqStatus({ status: r.status, declinedAt: r.declinedAt, parts: r.parts }),
+    viewed: r.firstViewedAt != null,
+    unreadEmailCount: r.unreadEmailCount,
+    quoteSentAt:
+      r.quotes
+        .filter((q) => q.status === "sent" && q.sentAt)
+        .sort((a, b) => (b.sentAt as Date).getTime() - (a.sentAt as Date).getTime())[0]
+        ?.sentAt?.toISOString() ?? null,
     receivedAt: r.receivedAt.toISOString(),
     lastEmailAt: r.lastEmailAt?.toISOString() ?? null,
     assigneeName: r.assignee?.name ?? null,
@@ -67,6 +74,8 @@ export default async function RfqsPage({ params }: Props) {
     parts: r.parts.map((p) => ({
       status: p.thumbnailStatus,
       url: p.thumbnailKey ? (thumbUrlByKey.get(p.thumbnailKey) ?? null) : null,
+      noBid: p.isNoBid,
+      estimated: p.estimateCompletedAt != null,
     })),
   }));
 
@@ -105,6 +114,8 @@ export default async function RfqsPage({ params }: Props) {
           status: tTable("status"),
           dateReceived: tTable("date_received"),
           lastEmail: tTable("last_email"),
+          unreadEmailOne: tTable("unread_email_one"),
+          unreadEmailOther: tTable("unread_email_other"),
           dateToday: tDate("today"),
           dateYesterday: tDate("yesterday"),
           dateAgo: tDate.raw("ago"),
@@ -133,8 +144,6 @@ export default async function RfqsPage({ params }: Props) {
           estimated: tStatus("estimated"),
           quoted: tStatus("quoted"),
           sent: tStatus("sent"),
-          won: tStatus("won"),
-          lost: tStatus("lost"),
           declined: tStatus("declined"),
         }}
       />

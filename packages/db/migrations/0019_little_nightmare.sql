@@ -1,0 +1,1 @@
+ALTER TABLE "parts" ADD COLUMN "estimate_completed_at" timestamp with time zone;

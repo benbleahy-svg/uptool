@@ -217,8 +217,6 @@ export const rfqStatusEnum = pgEnum("rfq_status", [
   "estimated",
   "quoted",
   "sent",
-  "won",
-  "lost",
   "no_bid",
 ]);
 
@@ -245,6 +243,15 @@ export const rfqs = pgTable(
     // the timestamp also feeds the later decline follow-up email.
     declinedAt: timestamp("declined_at", { withTimezone: true }),
     declinedReason: text("declined_reason"),
+    // Count of unread inbound emails on this RFQ's thread. Bumped on each inbound
+    // message, reset to 0 when the thread/messaging view is opened. Drives the
+    // blue unread dot in the dashboard "Last Email" column. Distinct from
+    // firstViewedAt (whether the RFQ row itself was opened).
+    unreadEmailCount: integer("unread_email_count").notNull().default(0),
+    // First time anyone in the org opened this RFQ's detail view. Null = unread:
+    // the dashboard shows its "Neu" status label bold until then. Org-wide, not
+    // per-user (shared inbox).
+    firstViewedAt: timestamp("first_viewed_at", { withTimezone: true }),
     assigneeId: uuid("assignee_id").references(() => users.id, { onDelete: "set null" }),
     receivedAt: timestamp("received_at", { withTimezone: true }).notNull(),
     lastEmailAt: timestamp("last_email_at", { withTimezone: true }),
@@ -449,6 +456,9 @@ export const parts = pgTable(
     // Persisted part-level No-Bid (mirrors the estimation UI's per-part decision).
     // An RFQ where every part is no-bid derives as Declined.
     isNoBid: boolean("is_no_bid").notNull().default(false),
+    // When the estimator clicked "Complete" for this part. Null = not yet
+    // finished. Drives the green ✓ on the dashboard Parts column.
+    estimateCompletedAt: timestamp("estimate_completed_at", { withTimezone: true }),
     // CAD thumbnail rendered server-side at ingest (object-storage key + status).
     // null status = no CAD linked yet.
     thumbnailKey: text("thumbnail_key"),

@@ -55,6 +55,16 @@ export async function setPartNoBid(formData: FormData) {
   await partService.setNoBid(orgId, partId, isNoBid);
 }
 
+export async function setPartCompleted(formData: FormData) {
+  const { userId } = await requireAuth();
+  const orgSlug = formData.get("orgSlug") as string;
+  const partId = formData.get("partId") as string;
+  const completed = formData.get("completed") === "true";
+  const orgId = await getOrgId(orgSlug, userId);
+
+  await partService.setCompleted(orgId, partId, completed);
+}
+
 export async function deletePart(formData: FormData) {
   const { userId } = await requireAuth();
   const orgSlug = formData.get("orgSlug") as string;

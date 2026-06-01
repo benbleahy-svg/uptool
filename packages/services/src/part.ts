@@ -86,6 +86,17 @@ export const partService = {
       .where(and(eq(parts.id, partId), eq(parts.orgId, orgId)));
   },
 
+  /**
+   * Mark a part's estimate finished (or reopen it). Persists the timestamp the
+   * dashboard reads to show the green ✓ on the Parts column.
+   */
+  async setCompleted(orgId: string, partId: string, completed: boolean) {
+    await db
+      .update(parts)
+      .set({ estimateCompletedAt: completed ? new Date() : null })
+      .where(and(eq(parts.id, partId), eq(parts.orgId, orgId)));
+  },
+
   async findByRfq(orgId: string, rfqId: string) {
     return db.query.parts.findMany({
       where: (p, { and, eq }) => and(eq(p.orgId, orgId), eq(p.rfqId, rfqId)),

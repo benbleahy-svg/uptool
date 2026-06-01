@@ -1,7 +1,7 @@
 import { getTranslations } from "next-intl/server";
 import { db } from "@uptool/db";
 import { notFound } from "next/navigation";
-import { storageService } from "@uptool/services";
+import { storageService, rfqService } from "@uptool/services";
 import { resolveRfq } from "@/lib/resolve-rfq";
 import { ReplyComposer } from "./reply-composer";
 import { AttachmentPanel } from "./attachment-panel";
@@ -21,6 +21,9 @@ export default async function RfqThreadPage({ params }: Props) {
   const rfq = await resolveRfq(org.id, rfqId);
   const rfqUuid = rfq?.id;
   if (!rfq) notFound();
+
+  // Opening the thread reads its emails — clear the dashboard unread badge.
+  await rfqService.markEmailsRead(org.id, rfq.id);
 
   const attachmentsWithUrls = await Promise.all(
     rfq.attachments.map(async (a) => ({

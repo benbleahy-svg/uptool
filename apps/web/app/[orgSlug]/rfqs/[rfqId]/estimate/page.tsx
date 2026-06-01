@@ -321,19 +321,8 @@ export default async function EstimatePage({ params }: Props) {
       )}
 
       {/* Status actions */}
-      {rfq.status !== "won" && rfq.status !== "no_bid" && rfq.status !== "lost" && (
+      {rfq.status !== "no_bid" && (
         <div className="flex items-center gap-3 pt-2 border-t border-[hsl(var(--border))]">
-          <form action={updateRfqStatus}>
-            <input type="hidden" name="orgSlug" value={orgSlug} />
-            <input type="hidden" name="rfqId" value={rfqId} />
-            <input type="hidden" name="status" value="won" />
-            <button
-              type="submit"
-              className="rounded bg-green-600 text-white px-4 py-2 text-sm font-medium hover:bg-green-700"
-            >
-              {tRfq("mark_won")}
-            </button>
-          </form>
           <form action={updateRfqStatus}>
             <input type="hidden" name="orgSlug" value={orgSlug} />
             <input type="hidden" name="rfqId" value={rfqId} />
@@ -343,17 +332,6 @@ export default async function EstimatePage({ params }: Props) {
               className="rounded border border-[hsl(var(--border))] bg-white text-[hsl(var(--muted-foreground))] px-4 py-2 text-sm font-medium hover:bg-gray-50"
             >
               {tRfq("mark_no_bid")}
-            </button>
-          </form>
-          <form action={updateRfqStatus}>
-            <input type="hidden" name="orgSlug" value={orgSlug} />
-            <input type="hidden" name="rfqId" value={rfqId} />
-            <input type="hidden" name="status" value="lost" />
-            <button
-              type="submit"
-              className="rounded border border-[hsl(var(--border))] bg-white text-red-500 px-4 py-2 text-sm font-medium hover:bg-red-50"
-            >
-              {tRfq("mark_lost")}
             </button>
           </form>
         </div>

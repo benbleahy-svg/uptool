@@ -1,6 +1,7 @@
 import { notFound, redirect } from "next/navigation";
 import { auth } from "@/auth";
 import { db } from "@uptool/db";
+import { rfqService } from "@uptool/services";
 import { resolveRfq } from "@/lib/resolve-rfq";
 import { RfqOverview } from "./_components/RfqOverview";
 
@@ -30,6 +31,10 @@ export default async function RfqDetailPage({ params, searchParams }: Props) {
 
   const rfq = await resolveRfq(org.id, rfqId);
   if (!rfq) notFound();
+
+  // Opening the detail view marks the RFQ read org-wide, clearing the bold
+  // "Neu" label on the dashboard. Idempotent — only stamps the first open.
+  await rfqService.markViewed(org.id, rfq.id);
 
   const allMessages = rfq.threads.flatMap((t) => t.messages);
   const lastInbound =

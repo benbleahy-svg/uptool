@@ -9,14 +9,7 @@
 // A mix of completed + no-bid parts is NOT declined — it falls through to the
 // stored status (e.g. "estimated").
 
-export type StoredRfqStatus =
-  | "new"
-  | "estimated"
-  | "quoted"
-  | "sent"
-  | "won"
-  | "lost"
-  | "no_bid";
+export type StoredRfqStatus = "new" | "estimated" | "quoted" | "sent" | "no_bid";
 
 export type DerivedRfqStatus = Exclude<StoredRfqStatus, "no_bid"> | "declined";
 

@@ -114,11 +114,22 @@ export const customerService = {
       name: c.name,
       domain: c.domain,
       contactCount: c.contacts.length,
-      openRfqCount: c.rfqs.filter(
-        (r) => !["won", "lost", "no_bid"].includes(r.status),
-      ).length,
+      contactEmails: c.contacts.map((ct) => ct.email),
+      // Total RFQs for this customer (all states, including declined) — matches
+      // the "RFQs" column in the Customers dashboard reference.
+      rfqCount: c.rfqs.length,
       lastRfqAt: c.rfqs[0]?.receivedAt ?? null,
     }));
+  },
+
+  /** Create a company (customer) manually from the Add Company flow. */
+  async createCompany(orgId: string, name: string, domain?: string) {
+    const [customer] = await db
+      .insert(customers)
+      .values({ orgId, name, domain: domain || null, source: "manual" })
+      .returning();
+    if (!customer) throw new Error("Failed to create company");
+    return customer;
   },
 
   async findById(orgId: string, customerId: string) {

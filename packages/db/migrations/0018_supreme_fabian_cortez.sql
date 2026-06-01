@@ -1,0 +1,1 @@
+ALTER TABLE "rfqs" ADD COLUMN "first_viewed_at" timestamp with time zone;

@@ -1,7 +1,7 @@
 import { notFound, redirect } from "next/navigation";
 import { auth } from "@/auth";
 import { db } from "@uptool/db";
-import { emailTemplateService } from "@uptool/services";
+import { emailTemplateService, rfqService } from "@uptool/services";
 import { resolveRfq } from "@/lib/resolve-rfq";
 import { renderTokens, tokensFromRfq } from "@/lib/email-tokens";
 import { MessagingPage } from "./_components/MessagingPage";
@@ -25,6 +25,9 @@ export default async function MessagingRoute({ params, searchParams }: Props) {
 
   const rfq = await resolveRfq(org.id, rfqId);
   if (!rfq) notFound();
+
+  // Opening the messaging view reads the thread — clear the dashboard unread badge.
+  await rfqService.markEmailsRead(org.id, rfq.id);
 
   const messages = rfq.threads
     .flatMap((t) => t.messages)

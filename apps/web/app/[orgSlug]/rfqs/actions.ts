@@ -101,8 +101,6 @@ export async function updateRfqStatus(formData: FormData) {
     | "estimated"
     | "quoted"
     | "sent"
-    | "won"
-    | "lost"
     | "no_bid";
 
   const org = await db.query.orgs.findFirst({ where: (o, { eq }) => eq(o.slug, orgSlug) });
@@ -161,8 +159,6 @@ export async function bulkUpdateRfqStatus(formData: FormData) {
     | "estimated"
     | "quoted"
     | "sent"
-    | "won"
-    | "lost"
     | "no_bid";
   const rfqIds = formData.getAll("rfqIds") as string[];
 

@@ -14,11 +14,11 @@ const db = drizzle(client, { schema });
 // at once. The four progress states (New/Estimated/Quoted/Sent) are STORED enum
 // values, so we set `status` directly. "Declined" is DERIVED (getRfqStatus), so
 // we exercise BOTH real routes: every part no-bid (status stays "estimated") and
-// an explicit `declinedAt`. Won/Lost are included for full pill coverage.
+// an explicit `declinedAt`.
 // All rows use the "seed-status.test" domain + 109x numbers so re-seeding can
 // clear them idempotently.
 const DEMO_DOMAIN = "seed-status.test";
-const DEMO_NUMBERS = [1090, 1091, 1092, 1093, 1094, 1095, 1096, 1097];
+const DEMO_NUMBERS = [1090, 1091, 1092, 1093, 1094, 1095];
 
 interface DemoQuote {
   quoteNumber: number;
@@ -29,10 +29,15 @@ interface DemoRfq {
   rfqNumber: number;
   company: string;
   subject: string;
-  status: "new" | "estimated" | "quoted" | "sent" | "won" | "lost" | "no_bid";
+  status: "new" | "estimated" | "quoted" | "sent" | "no_bid";
+  // Per-org "seen" state (firstViewedAt). Set = the row renders in the seen
+  // treatment (normal weight, blue tint); unset = unseen (bold, white).
+  seenAt?: Date;
+  // Unread inbound email count → blue dot + tooltip in the Last Email column.
+  unread?: number;
   declinedAt?: Date;
   declinedReason?: string;
-  parts: Array<{ description: string; isNoBid: boolean }>;
+  parts: Array<{ description: string; isNoBid: boolean; completed?: boolean }>;
   quote?: DemoQuote;
   receivedAt: Date;
   lastEmailAt?: Date;
@@ -45,6 +50,7 @@ const DEMO: DemoRfq[] = [
     company: "Seed — New GmbH",
     subject: "Seed: New — parts present, nothing estimated yet",
     status: "new",
+    unread: 2,
     parts: [
       { description: "Bracket A", isNoBid: false },
       { description: "Bracket B", isNoBid: false },
@@ -58,7 +64,7 @@ const DEMO: DemoRfq[] = [
     status: "estimated",
     // One part no-bid + one not → NOT all-no-bid, so it stays Estimated.
     parts: [
-      { description: "Housing (complete)", isNoBid: false },
+      { description: "Housing (complete)", isNoBid: false, completed: true },
       { description: "Insert (no-bid)", isNoBid: true },
     ],
     receivedAt: D("2026-05-30T10:20:00Z"),
@@ -68,19 +74,22 @@ const DEMO: DemoRfq[] = [
     company: "Seed — Quote Created GmbH",
     subject: "Seed: Quote Created — draft quote, not sent",
     status: "quoted",
-    parts: [{ description: "Flange", isNoBid: false }],
+    parts: [{ description: "Flange", isNoBid: false, completed: true }],
     quote: { quoteNumber: 91092, status: "draft" },
     receivedAt: D("2026-05-29T13:00:00Z"),
+    seenAt: D("2026-05-29T14:05:00Z"),
   },
   {
     rfqNumber: 1093,
     company: "Seed — Quote Sent GmbH",
     subject: "Seed: Quote Sent — sent quote with timestamp",
     status: "sent",
-    parts: [{ description: "Manifold", isNoBid: false }],
+    unread: 1,
+    parts: [{ description: "Manifold", isNoBid: false, completed: true }],
     quote: { quoteNumber: 91093, status: "sent", sentAt: D("2026-05-30T15:42:00Z") },
     receivedAt: D("2026-05-28T09:30:00Z"),
     lastEmailAt: D("2026-05-30T15:42:00Z"),
+    seenAt: D("2026-05-28T10:00:00Z"),
   },
   {
     rfqNumber: 1094,
@@ -105,22 +114,7 @@ const DEMO: DemoRfq[] = [
     parts: [{ description: "Bushing", isNoBid: false }],
     receivedAt: D("2026-05-26T14:00:00Z"),
     lastEmailAt: D("2026-05-29T16:25:00Z"),
-  },
-  {
-    rfqNumber: 1096,
-    company: "Seed — Won GmbH",
-    subject: "Seed: Won",
-    status: "won",
-    parts: [{ description: "Shaft", isNoBid: false }],
-    receivedAt: D("2026-05-25T09:00:00Z"),
-  },
-  {
-    rfqNumber: 1097,
-    company: "Seed — Lost GmbH",
-    subject: "Seed: Lost",
-    status: "lost",
-    parts: [{ description: "Cover", isNoBid: false }],
-    receivedAt: D("2026-05-24T09:00:00Z"),
+    seenAt: D("2026-05-29T16:30:00Z"),
   },
 ];
 
@@ -190,6 +184,7 @@ async function seedRfq() {
         source: "email",
         quantityBreaks: [1, 10, 100],
         status: "new",
+        unreadEmailCount: 3,
         receivedAt,
         lastEmailAt: receivedAt,
       })
@@ -440,6 +435,8 @@ Acme GmbH`,
           source: "manual",
           quantityBreaks: [1, 10, 100],
           status: d.status,
+          firstViewedAt: d.seenAt ?? null,
+          unreadEmailCount: d.unread ?? 0,
           declinedAt: d.declinedAt ?? null,
           declinedReason: d.declinedReason ?? null,
           receivedAt: d.receivedAt,
@@ -458,6 +455,7 @@ Acme GmbH`,
             processType: "cnc_milling",
             sortOrder: i,
             isNoBid: p.isNoBid,
+            estimateCompletedAt: p.completed ? d.receivedAt : null,
           })),
         );
       }
@@ -474,6 +472,29 @@ Acme GmbH`,
     }
 
     console.log(`Seeded ${DEMO.length} status-pill demo RFQs (#${DEMO_NUMBERS[0]}–#${DEMO_NUMBERS[DEMO_NUMBERS.length - 1]})`);
+
+    // ── Flagged demo company (idempotent) ───────────────────────────────────
+    // A company on a generic/free email domain (gmail.com) so the Customers
+    // dashboard's ⚠ "generic domain" flag is visible. No RFQs → "—" Last RFQ.
+    const FLAGGED_NAME = "Demo Customer";
+    const FLAGGED_DOMAIN = "gmail.com";
+    const FLAGGED_EMAILS = ["alexhuckstepp@gmail.com", "tryuptool@gmail.com"];
+    await tx
+      .delete(schema.contacts)
+      .where(and(eq(schema.contacts.orgId, org.id), inArray(schema.contacts.email, FLAGGED_EMAILS)));
+    await tx
+      .delete(schema.customers)
+      .where(and(eq(schema.customers.orgId, org.id), eq(schema.customers.name, FLAGGED_NAME)));
+    const [flagged] = await tx
+      .insert(schema.customers)
+      .values({ orgId: org.id, name: FLAGGED_NAME, domain: FLAGGED_DOMAIN, source: "manual" })
+      .returning();
+    if (!flagged) throw new Error("Failed to insert flagged demo customer");
+    await tx.insert(schema.contacts).values([
+      { orgId: org.id, customerId: flagged.id, email: "alexhuckstepp@gmail.com", name: "Alex H." },
+      { orgId: org.id, customerId: flagged.id, email: "tryuptool@gmail.com", name: null },
+    ]);
+    console.log(`Seeded flagged demo company "${FLAGGED_NAME}" (${FLAGGED_DOMAIN})`);
   });
 
   console.log("Test RFQ seed complete.");

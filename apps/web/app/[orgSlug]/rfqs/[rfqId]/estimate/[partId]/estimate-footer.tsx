@@ -4,7 +4,7 @@ import { getCompletion, setPartStatus } from "@/lib/quoting/partCompletion";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@uptool/ui";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { setPartNoBid } from "../actions";
+import { setPartCompleted, setPartNoBid } from "../actions";
 
 interface Props {
   orgSlug: string;
@@ -63,15 +63,27 @@ export function EstimateFooter({
     void setPartNoBid(fd);
   }
 
+  // Mirror completion to the DB so the dashboard Parts column can show the ✓
+  // for finished parts (best-effort; session state drives the live UI).
+  function persistCompleted(completed: boolean) {
+    const fd = new FormData();
+    fd.set("orgSlug", orgSlug);
+    fd.set("partId", currentPartId);
+    fd.set("completed", String(completed));
+    void setPartCompleted(fd);
+  }
+
   function onNoBid() {
     setPartStatus(rfqId, currentPartId, "noBid");
     persistNoBid(true);
+    persistCompleted(false);
     advance();
   }
 
   function onComplete() {
     setPartStatus(rfqId, currentPartId, "completed");
     persistNoBid(false);
+    persistCompleted(true);
     advance();
   }
 

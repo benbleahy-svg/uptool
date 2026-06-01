@@ -1,0 +1,1 @@
+ALTER TABLE "rfqs" ADD COLUMN "unread_email_count" integer DEFAULT 0 NOT NULL;

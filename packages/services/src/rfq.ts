@@ -1,6 +1,6 @@
 import { attachments, auditLog, db, emailMessages, emailThreads, orgs, rfqs } from "@uptool/db";
 import { isManufacturingFile } from "@uptool/shared";
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import { customerService } from "./customer";
 import { storageService } from "./storage";
 import { withOrgContext } from "@uptool/db";
@@ -60,6 +60,8 @@ export const rfqService = {
           status: "new",
           receivedAt: input.receivedAt,
           lastEmailAt: input.receivedAt,
+          // The originating inbound email starts unread.
+          unreadEmailCount: 1,
         })
         .returning();
 
@@ -156,11 +158,26 @@ export const rfqService = {
 
       await tx
         .update(rfqs)
-        .set({ lastEmailAt: input.receivedAt, updatedAt: new Date() })
+        .set({
+          lastEmailAt: input.receivedAt,
+          unreadEmailCount: sql`${rfqs.unreadEmailCount} + 1`,
+          updatedAt: new Date(),
+        })
         .where(and(eq(rfqs.id, input.rfqId), eq(rfqs.orgId, input.orgId)));
 
       return message;
     });
+  },
+
+  /**
+   * Clear the unread-email badge for an RFQ — called when the email
+   * thread/messaging view is opened. Resets the count the dashboard reads.
+   */
+  async markEmailsRead(orgId: string, rfqId: string) {
+    await db
+      .update(rfqs)
+      .set({ unreadEmailCount: 0 })
+      .where(and(eq(rfqs.id, rfqId), eq(rfqs.orgId, orgId), sql`${rfqs.unreadEmailCount} > 0`));
   },
 
   async findByOrg(orgId: string) {
@@ -172,6 +189,9 @@ export const rfqService = {
           contact: true,
           assignee: true,
           attachments: true,
+          quotes: {
+            columns: { sentAt: true, status: true },
+          },
           parts: {
             columns: {
               id: true,
@@ -179,6 +199,8 @@ export const rfqService = {
               thumbnailStatus: true,
               sortOrder: true,
               isNoBid: true,
+              // Drives the per-part "complete" (✓) overlay badge on the dashboard.
+              estimateCompletedAt: true,
             },
             orderBy: (p, { asc }) => [asc(p.sortOrder), asc(p.createdAt)],
           },
@@ -305,7 +327,7 @@ export const rfqService = {
   async updateStatus(
     orgId: string,
     rfqId: string,
-    status: "new" | "estimated" | "quoted" | "sent" | "won" | "lost" | "no_bid",
+    status: "new" | "estimated" | "quoted" | "sent" | "no_bid",
   ) {
     return withOrgContext(orgId, async (tx) => {
       await tx
@@ -334,6 +356,19 @@ export const rfqService = {
     });
   },
 
+  /**
+   * Stamp the org-wide "first viewed" time the first time anyone opens this
+   * RFQ's detail view. Idempotent: the `firstViewedAt is null` guard means
+   * repeat visits don't overwrite it, so the dashboard's bold "Neu" label
+   * clears on the first open and stays cleared.
+   */
+  async markViewed(orgId: string, rfqId: string) {
+    await db
+      .update(rfqs)
+      .set({ firstViewedAt: new Date() })
+      .where(and(eq(rfqs.id, rfqId), eq(rfqs.orgId, orgId), isNull(rfqs.firstViewedAt)));
+  },
+
   async advanceToEstimated(orgId: string, rfqId: string) {
     await db
       .update(rfqs)
@@ -344,7 +379,7 @@ export const rfqService = {
   async bulkUpdateStatus(
     orgId: string,
     rfqIds: string[],
-    status: "new" | "estimated" | "quoted" | "sent" | "won" | "lost" | "no_bid",
+    status: "new" | "estimated" | "quoted" | "sent" | "no_bid",
   ) {
     if (rfqIds.length === 0) return;
     await db

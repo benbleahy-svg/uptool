@@ -1,9 +1,10 @@
-import { getTranslations } from "next-intl/server";
+import { getTranslations, getLocale } from "next-intl/server";
 import { db } from "@uptool/db";
 import { notFound, redirect } from "next/navigation";
 import { auth } from "@/auth";
-import { customerService } from "@uptool/services";
+import { customerService, storageService } from "@uptool/services";
 import { CustomerTable, type CustomerRow } from "./customer-table";
+import { createCompany } from "./actions";
 
 interface Props {
   params: Promise<{ orgSlug: string }>;
@@ -20,35 +21,52 @@ export default async function CustomersPage({ params }: Props) {
   });
   if (!org) notFound();
 
-  const customers = await customerService.findAll(org.id);
-  const t = await getTranslations("customers");
+  const [customers, locale, orgLogoUrl, t] = await Promise.all([
+    customerService.findAll(org.id),
+    getLocale(),
+    org.logoUrl ? storageService.presignedUrl(org.logoUrl, 3600) : Promise.resolve(null),
+    getTranslations("customers"),
+  ]);
 
   const rows: CustomerRow[] = customers.map((c) => ({
     id: c.id,
     name: c.name,
     domain: c.domain,
     contactCount: c.contactCount,
-    openRfqCount: c.openRfqCount,
+    contactEmails: c.contactEmails,
+    rfqCount: c.rfqCount,
     lastRfqAt: c.lastRfqAt?.toISOString() ?? null,
   }));
 
   return (
-    <div className="flex flex-col h-full gap-4">
-      <div className="flex items-center justify-between">
-        <h1 className="text-base font-semibold">{t("title")}</h1>
-      </div>
-      <CustomerTable
-        data={rows}
-        orgSlug={orgSlug}
-        labels={{
-          company: t("company"),
-          domain: t("domain"),
-          contacts: t("contacts_count"),
-          openRfqs: t("open_rfqs"),
-          lastRfq: t("last_rfq"),
-          emptyTitle: t("no_customers"),
-        }}
-      />
-    </div>
+    <CustomerTable
+      data={rows}
+      orgSlug={orgSlug}
+      orgName={org.name}
+      orgLogoUrl={orgLogoUrl}
+      locale={locale}
+      onCreateCompany={createCompany}
+      labels={{
+        title: t("title"),
+        company: t("company"),
+        emailDomain: t("email_domain"),
+        contacts: t("contacts_count"),
+        rfqs: t("rfqs"),
+        lastRfq: t("last_rfq"),
+        emptyTitle: t("no_customers"),
+        noFilterResults: t("no_filter_results"),
+        searchPlaceholder: t("search_placeholder"),
+        exportContacts: t("export_contacts"),
+        addCompany: t("add_company"),
+        addCompanyName: t("add_company_name"),
+        addCompanyNamePlaceholder: t("add_company_name_placeholder"),
+        addCompanyDomain: t("add_company_domain"),
+        addCompanyDomainPlaceholder: t("add_company_domain_placeholder"),
+        addCompanyCreate: t("add_company_create"),
+        flaggedTooltip: t("flagged_tooltip"),
+        actionView: t("action_view"),
+        actionDelete: t("action_delete"),
+      }}
+    />
   );
 }

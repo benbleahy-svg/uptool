@@ -94,8 +94,15 @@ export class CadRenderer {
     });
   }
 
-  /** Render CAD bytes (ext like ".step"/".stp") to a square PNG buffer. */
-  async render(bytes: Buffer, ext: string, timeoutMs = 25_000): Promise<Buffer> {
+  /**
+   * Render CAD bytes (ext like ".step"/".stp") to a square PNG buffer.
+   *
+   * timeout is generous: large STEP files (multi-MB) parse + mesh in occt and
+   * paint via software WebGL (swiftshader), which is slow — 25s was too tight
+   * and left big assemblies failing/retrying forever. 60s comfortably covers
+   * the largest fixtures while still bounding a genuinely stuck render.
+   */
+  async render(bytes: Buffer, ext: string, timeoutMs = 60_000): Promise<Buffer> {
     if (!this.browser) throw new Error("CadRenderer not initialised");
     const token = randomUUID();
     this.models.set(token, { bytes, ext });
@@ -115,7 +122,12 @@ export class CadRenderer {
           ),
         modelUrl,
       );
-      return await page.locator("#v canvas").screenshot();
+      // Explicit timeout so the screenshot's stability wait shares the full
+      // render budget (not Playwright's 30s default); animations disabled so a
+      // settling fit/zoom can't keep the element "unstable" past the deadline.
+      return await page
+        .locator("#v canvas")
+        .screenshot({ timeout: timeoutMs, animations: "disabled" });
     } finally {
       this.models.delete(token);
       await context.close().catch(() => {});
