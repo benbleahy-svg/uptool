@@ -17,6 +17,12 @@ export interface CadApi {
 
 interface Props {
   url: string;
+  /**
+   * File name (with extension) for the model at `url`. o3dv infers the importer
+   * from the file extension; when `url` has none (e.g. `/api/attachments/<id>`),
+   * pass the name so the extension comes from here instead of the URL.
+   */
+  name?: string;
   /** When false the canvas ignores pointer events (used by the toggle thumbnail). */
   interactive?: boolean;
   background?: [number, number, number];
@@ -29,6 +35,7 @@ interface Props {
 // STEP parser from jsDelivr at runtime, so we import it lazily inside the effect.
 export function CadCanvas({
   url,
+  name,
   interactive = true,
   background = [255, 255, 255],
   className,
@@ -70,7 +77,13 @@ export function CadCanvas({
         defaultColor: new OV.RGBColor(184, 188, 194),
         onModelLoaded: () => onLoadedRef.current?.(),
       });
-      viewer.LoadModelFromUrlList([url]);
+      // o3dv picks the importer by file extension. If the URL has none but a
+      // named file is given (with an extension), load it as a named URL input.
+      if (name && /\.[a-z0-9_]+$/i.test(name) && !/\.[a-z0-9_]+$/i.test(url.split("?")[0] ?? "")) {
+        viewer.LoadModelFromInputFiles([new OV.InputFile(name, OV.FileSource.Url, url)]);
+      } else {
+        viewer.LoadModelFromUrlList([url]);
+      }
 
       const api: CadApi = {
         fitToView: () => {
@@ -139,7 +152,7 @@ export function CadCanvas({
       if (containerRef.current) containerRef.current.replaceChildren();
       viewer = null;
     };
-  }, [url, bgR, bgG, bgB]);
+  }, [url, name, bgR, bgG, bgB]);
 
   return (
     <div

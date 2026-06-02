@@ -166,6 +166,7 @@ export function CadInspectorDialog({ open, onOpenChange, file }: Props) {
             {open && (
               <CadCanvas
                 url={file.url}
+                name={file.name}
                 background={dark ? [24, 24, 27] : [255, 255, 255]}
                 onReady={(api) => {
                   apiRef.current = api;

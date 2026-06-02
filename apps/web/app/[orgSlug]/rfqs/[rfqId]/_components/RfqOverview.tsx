@@ -3,6 +3,8 @@
 import { format, formatDistanceToNow } from "date-fns";
 import {
   Box,
+  ChevronDown,
+  ChevronUp,
   File,
   FileText,
   Inbox,
@@ -19,9 +21,11 @@ import {
 } from "lucide-react";
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { declineRfq } from "../../actions";
+import type { FileRef } from "../estimate/[partId]/mocks/mockFiles";
 import { CadThumb } from "./cad-thumb";
+import { FilePreviewModal } from "./file-preview-modal";
 
 const PdfThumb = dynamic(() => import("./pdf-thumb").then((m) => m.PdfThumb), { ssr: false });
 
@@ -139,6 +143,24 @@ export function RfqOverview({
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
   const [search, setSearch] = useState("");
   const [hoveredPartId, setHoveredPartId] = useState<string | null>(null);
+  const [preview, setPreview] = useState<{ file: FileRef; kind: "cad" | "pdf" } | null>(null);
+
+  // Collapse the upper email/files region to give the Parts list more room.
+  // Persisted per-RFQ for the tab session (survives navigation, resets on reload).
+  const collapseKey = `rfq:${rfqId}:upperCollapsed`;
+  const [upperCollapsed, setUpperCollapsed] = useState(false);
+  useEffect(() => {
+    setUpperCollapsed(sessionStorage.getItem(collapseKey) === "1");
+  }, [collapseKey]);
+  useEffect(() => {
+    sessionStorage.setItem(collapseKey, upperCollapsed ? "1" : "0");
+  }, [collapseKey, upperCollapsed]);
+
+  function openPreview(a: Attachment) {
+    const kind = fileKind(a);
+    if (kind === "other") return; // no viewer for non-CAD/non-PDF files
+    setPreview({ file: { id: a.id, name: a.filename, url: `/api/attachments/${a.id}` }, kind });
+  }
 
   const toggleCategory = (cat: string) => {
     setActiveCategories((prev) => {
@@ -156,220 +178,248 @@ export function RfqOverview({
 
   return (
     <div className="flex flex-col h-full">
-      {/* Scrollable content */}
-      <div className="flex-1 overflow-y-auto overflow-x-hidden p-4">
-        {/* Top row: Last email + Files side by side */}
-        <div className="flex gap-3 mb-3 h-[288px]">
-          {/* Last email */}
-          <section className="flex-1 min-w-0 flex flex-col bg-white rounded-lg border border-[#E5E7EB]">
-            <div className="flex-1 overflow-auto p-4">
-              {/* Header row */}
-              <div className="flex items-center gap-2 mb-3">
-                <Mail className="shrink-0 text-[#1F2937]" style={{ width: 18, height: 18 }} />
-                <span className="text-[14px] font-semibold text-[#1F2937]">Last Email</span>
-                <div className="ml-3 flex items-center gap-1 min-w-0">
-                  <span className="text-[13px] text-[#9CA3AF] shrink-0">from:</span>
-                  <span className="text-[13px] text-[#6B7280] truncate">
-                    {lastEmail
-                      ? `${lastEmail.fromName ?? lastEmail.fromEmail ?? "—"}, ${formatDistanceToNow(lastEmail.receivedAt, { addSuffix: true })}`
-                      : "—"}
+      {/* Content — flex column so the Parts list fills the space freed when the
+          upper region collapses. Each inner panel scrolls on its own. */}
+      <div className="flex-1 min-h-0 overflow-hidden p-4 flex flex-col">
+        {/* Upper region (Last email + Files) — collapsible */}
+        <div
+          className={`shrink-0 overflow-hidden transition-all duration-300 ease-in-out ${
+            upperCollapsed ? "max-h-0 opacity-0 mb-0" : "max-h-[300px] opacity-100 mb-3"
+          }`}
+        >
+          {/* Top row: Last email + Files side by side */}
+          <div className="flex gap-3 h-[288px]">
+            {/* Last email */}
+            <section className="flex-1 min-w-0 flex flex-col bg-white rounded-lg border border-[#E5E7EB]">
+              <div className="flex-1 overflow-auto p-4">
+                {/* Header row */}
+                <div className="flex items-center gap-2 mb-3">
+                  <Mail className="shrink-0 text-[#1F2937]" style={{ width: 18, height: 18 }} />
+                  <span className="text-[14px] font-semibold text-[#1F2937]">Last Email</span>
+                  <div className="ml-3 flex items-center gap-1 min-w-0">
+                    <span className="text-[13px] text-[#9CA3AF] shrink-0">from:</span>
+                    <span className="text-[13px] text-[#6B7280] truncate">
+                      {lastEmail
+                        ? `${lastEmail.fromName ?? lastEmail.fromEmail ?? "—"}, ${formatDistanceToNow(lastEmail.receivedAt, { addSuffix: true })}`
+                        : "—"}
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    disabled={!lastEmail}
+                    onClick={() => console.log("TODO: open email thread")}
+                    className="ml-auto shrink-0 flex items-center gap-1.5 h-8 px-3 text-[13px] font-medium bg-white border border-[#E5E7EB] rounded hover:bg-[hsl(var(--accent))] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    <Inbox style={{ width: 14, height: 14 }} />
+                    Open
+                  </button>
+                </div>
+
+                {lastEmail ? (
+                  <>
+                    {/* Subject row */}
+                    <p className="text-[13px] pt-1 pb-2">
+                      <span className="text-[#9CA3AF]">Subject: </span>
+                      <span className="text-[#1F2937]">{lastEmail.subject ?? "—"}</span>
+                    </p>
+                    {/* Divider */}
+                    <hr className="border-[#E5E7EB]" />
+                    {/* Body */}
+                    {lastEmail.bodyText && (
+                      <div className="pt-3">
+                        <p className="text-[13px] text-[#1F2937] leading-[1.5] whitespace-pre-line">
+                          {lastEmail.bodyText}
+                        </p>
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <div className="pt-3">
+                    <p className="text-[13px] text-[#9CA3AF]">No emails yet</p>
+                  </div>
+                )}
+              </div>
+            </section>
+
+            {/* Files */}
+            <section className="flex-1 min-w-0 flex flex-col bg-white rounded-lg border border-[hsl(var(--border))]">
+              {/* Header — single row; checkboxes fill middle and clip when panel is narrow */}
+              <div className="shrink-0 px-4 py-3 border-b border-[hsl(var(--border))] flex items-center gap-2">
+                {/* Title */}
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <FileText className="w-4 h-4 text-[#1F2937]" />
+                  <span className="text-[14px] font-semibold text-[#1F2937] whitespace-nowrap">
+                    {attachments.length} Files
                   </span>
                 </div>
-                <button
-                  type="button"
-                  disabled={!lastEmail}
-                  onClick={() => console.log("TODO: open email thread")}
-                  className="ml-auto shrink-0 flex items-center gap-1.5 h-8 px-3 text-[13px] font-medium bg-white border border-[#E5E7EB] rounded hover:bg-[hsl(var(--accent))] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-                >
-                  <Inbox style={{ width: 14, height: 14 }} />
-                  Open
-                </button>
-              </div>
-
-              {lastEmail ? (
-                <>
-                  {/* Subject row */}
-                  <p className="text-[13px] pt-1 pb-2">
-                    <span className="text-[#9CA3AF]">Subject: </span>
-                    <span className="text-[#1F2937]">{lastEmail.subject ?? "—"}</span>
-                  </p>
-                  {/* Divider */}
-                  <hr className="border-[#E5E7EB]" />
-                  {/* Body */}
-                  {lastEmail.bodyText && (
-                    <div className="pt-3">
-                      <p className="text-[13px] text-[#1F2937] leading-[1.5] whitespace-pre-line">
-                        {lastEmail.bodyText}
-                      </p>
-                    </div>
-                  )}
-                </>
-              ) : (
-                <div className="pt-3">
-                  <p className="text-[13px] text-[#9CA3AF]">No emails yet</p>
-                </div>
-              )}
-            </div>
-          </section>
-
-          {/* Files */}
-          <section className="flex-1 min-w-0 flex flex-col bg-white rounded-lg border border-[hsl(var(--border))]">
-            {/* Header — single row; checkboxes fill middle and clip when panel is narrow */}
-            <div className="shrink-0 px-4 py-3 border-b border-[hsl(var(--border))] flex items-center gap-2">
-              {/* Title */}
-              <div className="flex items-center gap-1.5 shrink-0">
-                <FileText className="w-4 h-4 text-[#1F2937]" />
-                <span className="text-[14px] font-semibold text-[#1F2937] whitespace-nowrap">
-                  {attachments.length} Files
-                </span>
-              </div>
-              {/* Category checkboxes — flex-1 so they fill remaining space; overflow-hidden clips if panel is narrow */}
-              <div className="flex items-center gap-2.5 flex-1 min-w-0 overflow-hidden">
-                {(["drawing", "cad", "bom", "other"] as Category[]).map((cat) => {
-                  const count = attachments.filter((a) => a.category === cat).length;
-                  return (
-                    <label
-                      key={cat}
-                      className="flex items-center gap-1 cursor-pointer select-none shrink-0"
-                    >
-                      <input
-                        type="checkbox"
-                        checked={activeCategories.has(cat)}
-                        onChange={() => toggleCategory(cat)}
-                        className="w-3 h-3 rounded accent-[hsl(var(--primary))]"
-                      />
-                      <span className="text-[11px] font-bold text-[#374151] whitespace-nowrap">
-                        {CAT[cat].short} <span className="font-bold text-[#1F2937]">({count})</span>
-                      </span>
-                    </label>
-                  );
-                })}
-              </div>
-              {/* Grid / List toggle */}
-              <div className="flex items-center border border-[hsl(var(--border))] rounded p-0.5 gap-0.5 shrink-0">
-                <button
-                  type="button"
-                  onClick={() => setViewMode("grid")}
-                  className={`p-1 rounded ${viewMode === "grid" ? "bg-[hsl(var(--primary))] text-white" : "text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))]"}`}
-                >
-                  <LayoutGrid className="w-3.5 h-3.5" />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setViewMode("list")}
-                  className={`p-1 rounded ${viewMode === "list" ? "bg-[hsl(var(--primary))] text-white" : "text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))]"}`}
-                >
-                  <List className="w-3.5 h-3.5" />
-                </button>
-              </div>
-              {/* Upload */}
-              <button
-                type="button"
-                className="flex items-center gap-1 shrink-0 h-6 px-2 text-[11px] font-normal border border-[hsl(var(--border))] rounded hover:bg-[hsl(var(--accent))] transition-colors"
-              >
-                <Upload className="w-3 h-3" />
-                Upload
-              </button>
-              {/* Search */}
-              <div className="flex items-center gap-1 w-[120px] h-6 px-2 border border-[hsl(var(--border))] rounded-md shrink-0">
-                <Search className="w-3 h-3 text-[#9CA3AF] shrink-0" />
-                <input
-                  type="text"
-                  placeholder="Search…"
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  className="flex-1 text-[11px] focus:outline-none bg-transparent"
-                />
-              </div>
-            </div>
-
-            <div className="flex-1 overflow-auto p-4">
-              {filtered.length === 0 ? (
-                <p className="text-sm text-center py-4 text-[hsl(var(--muted-foreground))]">
-                  No files match.
-                </p>
-              ) : viewMode === "grid" ? (
-                <div className="grid grid-cols-5 gap-2">
-                  {filtered.map((a) => {
-                    const cfg = CAT[a.category as Category] ?? CAT.other;
-                    const Icon = cfg.Icon;
-                    const ext = a.filename.split(".").pop()?.toUpperCase() ?? "FILE";
-                    const kind = fileKind(a);
+                {/* Category checkboxes — flex-1 so they fill remaining space; overflow-hidden clips if panel is narrow */}
+                <div className="flex items-center gap-2.5 flex-1 min-w-0 overflow-hidden">
+                  {(["drawing", "cad", "bom", "other"] as Category[]).map((cat) => {
+                    const count = attachments.filter((a) => a.category === cat).length;
                     return (
-                      <div
-                        key={a.id}
-                        className="flex flex-col border border-[hsl(var(--border))] rounded-lg overflow-hidden hover:border-[hsl(var(--primary))] cursor-default"
-                        onMouseEnter={() => setHoveredPartId(a.partId)}
-                        onMouseLeave={() => setHoveredPartId(null)}
+                      <label
+                        key={cat}
+                        className="flex items-center gap-1 cursor-pointer select-none shrink-0"
                       >
-                        {/* Preview area */}
-                        {kind === "pdf" ? (
-                          <div className="flex h-[120px] shrink-0 items-center justify-center overflow-hidden bg-white">
-                            <PdfThumb url={`/api/attachments/${a.id}`} height={120} />
-                          </div>
-                        ) : kind === "cad" ? (
-                          <CadThumb className="h-[120px] shrink-0" />
-                        ) : (
-                          <div className="h-[120px] bg-[#F3F4F6] flex flex-col items-center justify-center gap-2 shrink-0">
-                            <Icon style={{ width: 48, height: 48, color: cfg.color }} />
-                            <span
-                              className="text-[10px] font-semibold px-1.5 py-0.5 rounded"
-                              style={{ backgroundColor: `${cfg.color}1a`, color: cfg.color }}
-                            >
-                              {ext}
-                            </span>
-                          </div>
-                        )}
-                        {/* Info area */}
-                        <div className="px-2 py-1.5 flex flex-col gap-0.5">
-                          <p className="text-[11px] font-bold truncate">{a.filename}</p>
-                          <p className="text-[10px] text-[#9CA3AF]">
-                            {format(a.createdAt, "h:mma, MMM d")}
-                          </p>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              ) : (
-                <div className="space-y-1">
-                  {filtered.map((a) => {
-                    const cfg = CAT[a.category as Category] ?? CAT.other;
-                    const Icon = cfg.Icon;
-                    return (
-                      <div
-                        key={a.id}
-                        className="flex items-center gap-3 py-2 px-3 border border-[hsl(var(--border))] rounded-lg hover:border-[hsl(var(--primary))] cursor-default"
-                        onMouseEnter={() => setHoveredPartId(a.partId)}
-                        onMouseLeave={() => setHoveredPartId(null)}
-                      >
-                        <Icon
-                          style={{ width: 20, height: 20, color: cfg.color }}
-                          className="shrink-0"
+                        <input
+                          type="checkbox"
+                          checked={activeCategories.has(cat)}
+                          onChange={() => toggleCategory(cat)}
+                          className="w-3 h-3 rounded accent-[hsl(var(--primary))]"
                         />
-                        <p className="text-xs font-bold truncate flex-1">{a.filename}</p>
-                        <span className="text-[10px] text-[hsl(var(--muted-foreground))] shrink-0 capitalize">
-                          {cfg.label}
+                        <span className="text-[11px] font-bold text-[#374151] whitespace-nowrap">
+                          {CAT[cat].short}{" "}
+                          <span className="font-bold text-[#1F2937]">({count})</span>
                         </span>
-                        <span className="text-[10px] text-[hsl(var(--muted-foreground))] shrink-0">
-                          {format(a.createdAt, "h:mma, MMM d")}
-                        </span>
-                      </div>
+                      </label>
                     );
                   })}
                 </div>
-              )}
-            </div>
-          </section>
-        </div>
+                {/* Grid / List toggle */}
+                <div className="flex items-center border border-[hsl(var(--border))] rounded p-0.5 gap-0.5 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => setViewMode("grid")}
+                    className={`p-1 rounded ${viewMode === "grid" ? "bg-[hsl(var(--primary))] text-white" : "text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))]"}`}
+                  >
+                    <LayoutGrid className="w-3.5 h-3.5" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setViewMode("list")}
+                    className={`p-1 rounded ${viewMode === "list" ? "bg-[hsl(var(--primary))] text-white" : "text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))]"}`}
+                  >
+                    <List className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+                {/* Upload */}
+                <button
+                  type="button"
+                  className="flex items-center gap-1 shrink-0 h-6 px-2 text-[11px] font-normal border border-[hsl(var(--border))] rounded hover:bg-[hsl(var(--accent))] transition-colors"
+                >
+                  <Upload className="w-3 h-3" />
+                  Upload
+                </button>
+                {/* Search */}
+                <div className="flex items-center gap-1 w-[120px] h-6 px-2 border border-[hsl(var(--border))] rounded-md shrink-0">
+                  <Search className="w-3 h-3 text-[#9CA3AF] shrink-0" />
+                  <input
+                    type="text"
+                    placeholder="Search…"
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    className="flex-1 text-[11px] focus:outline-none bg-transparent"
+                  />
+                </div>
+              </div>
 
-        {/* Parts — full width
+              <div className="flex-1 overflow-auto p-4">
+                {filtered.length === 0 ? (
+                  <p className="text-sm text-center py-4 text-[hsl(var(--muted-foreground))]">
+                    No files match.
+                  </p>
+                ) : viewMode === "grid" ? (
+                  <div className="grid grid-cols-5 gap-2">
+                    {filtered.map((a) => {
+                      const cfg = CAT[a.category as Category] ?? CAT.other;
+                      const Icon = cfg.Icon;
+                      const ext = a.filename.split(".").pop()?.toUpperCase() ?? "FILE";
+                      const kind = fileKind(a);
+                      return (
+                        <button
+                          type="button"
+                          key={a.id}
+                          className={`flex flex-col text-left border border-[hsl(var(--border))] rounded-lg overflow-hidden hover:border-[hsl(var(--primary))] ${kind === "other" ? "cursor-default" : "cursor-pointer"}`}
+                          onClick={() => openPreview(a)}
+                          onMouseEnter={() => setHoveredPartId(a.partId)}
+                          onMouseLeave={() => setHoveredPartId(null)}
+                        >
+                          {/* Preview area */}
+                          {kind === "pdf" ? (
+                            <div className="flex h-[120px] shrink-0 items-center justify-center overflow-hidden bg-white">
+                              <PdfThumb url={`/api/attachments/${a.id}`} height={120} />
+                            </div>
+                          ) : kind === "cad" ? (
+                            <CadThumb className="h-[120px] shrink-0" />
+                          ) : (
+                            <div className="h-[120px] bg-[#F3F4F6] flex flex-col items-center justify-center gap-2 shrink-0">
+                              <Icon style={{ width: 48, height: 48, color: cfg.color }} />
+                              <span
+                                className="text-[10px] font-semibold px-1.5 py-0.5 rounded"
+                                style={{ backgroundColor: `${cfg.color}1a`, color: cfg.color }}
+                              >
+                                {ext}
+                              </span>
+                            </div>
+                          )}
+                          {/* Info area */}
+                          <div className="px-2 py-1.5 flex flex-col gap-0.5">
+                            <p className="text-[11px] font-bold truncate">{a.filename}</p>
+                            <p className="text-[10px] text-[#9CA3AF]">
+                              {format(a.createdAt, "h:mma, MMM d")}
+                            </p>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="space-y-1">
+                    {filtered.map((a) => {
+                      const cfg = CAT[a.category as Category] ?? CAT.other;
+                      const Icon = cfg.Icon;
+                      const kind = fileKind(a);
+                      return (
+                        <button
+                          type="button"
+                          key={a.id}
+                          className={`w-full flex items-center gap-3 py-2 px-3 text-left border border-[hsl(var(--border))] rounded-lg hover:border-[hsl(var(--primary))] ${kind === "other" ? "cursor-default" : "cursor-pointer"}`}
+                          onClick={() => openPreview(a)}
+                          onMouseEnter={() => setHoveredPartId(a.partId)}
+                          onMouseLeave={() => setHoveredPartId(null)}
+                        >
+                          <Icon
+                            style={{ width: 20, height: 20, color: cfg.color }}
+                            className="shrink-0"
+                          />
+                          <p className="text-xs font-bold truncate flex-1">{a.filename}</p>
+                          <span className="text-[10px] text-[hsl(var(--muted-foreground))] shrink-0 capitalize">
+                            {cfg.label}
+                          </span>
+                          <span className="text-[10px] text-[hsl(var(--muted-foreground))] shrink-0">
+                            {format(a.createdAt, "h:mma, MMM d")}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </section>
+          </div>
+        </div>
+        {/* end upper region */}
+
+        {/* Parts — full width, fills the remaining height
             Grid columns: [row#] [pill] [thumb] [id 2fr] [qty 90px] [files 1fr]
             Both the header and every data row use the same template so columns
             are pixel-perfect without any placeholder hacks. */}
-        <section className="bg-white rounded-lg border border-[hsl(var(--border))]">
+        <section className="relative flex-1 min-h-0 flex flex-col bg-white rounded-lg border border-[hsl(var(--border))]">
+          {/* Collapse chevron — straddles the top divider, centered */}
+          <button
+            type="button"
+            onClick={() => setUpperCollapsed((v) => !v)}
+            aria-label={upperCollapsed ? "Show email and files" : "Hide email and files"}
+            className="absolute -top-3 left-1/2 z-10 grid h-6 w-6 -translate-x-1/2 place-items-center rounded-full border border-[hsl(var(--border))] bg-white text-[#6B7280] shadow-sm transition-colors hover:bg-[#F3F4F6]"
+          >
+            {upperCollapsed ? (
+              <ChevronDown style={{ width: 16, height: 16 }} />
+            ) : (
+              <ChevronUp style={{ width: 16, height: 16 }} />
+            )}
+          </button>
           {/* Header */}
-          <div className="grid items-center px-4 py-3 border-b border-[hsl(var(--border))] gap-x-3 grid-cols-[20px_104px_72px_2fr_180px_1fr]">
+          <div className="shrink-0 grid items-center px-4 py-3 border-b border-[hsl(var(--border))] gap-x-3 grid-cols-[20px_104px_72px_2fr_180px_1fr]">
             {/* cols 1-4 merged: title + add button */}
             <div className="col-span-4 flex items-center gap-2">
               <h2 className="text-[14px] font-semibold text-[#1F2937]">Parts</h2>
@@ -412,7 +462,7 @@ export function RfqOverview({
           </div>
 
           {/* Rows */}
-          <div className="divide-y divide-[hsl(var(--border))]">
+          <div className="flex-1 overflow-auto divide-y divide-[hsl(var(--border))]">
             {parts.length === 0 ? (
               <p className="text-sm text-center py-6 text-[hsl(var(--muted-foreground))]">
                 No parts added yet.
@@ -476,8 +526,36 @@ export function RfqOverview({
                       {partFiles.map((f) => {
                         const cfg = CAT[f.category as Category] ?? CAT.other;
                         const Icon = cfg.Icon;
+                        const viewable = fileKind(f) !== "other";
                         return (
-                          <div key={f.id} className="flex items-center gap-1.5 min-w-0">
+                          <div
+                            key={f.id}
+                            // Inside the part-row <button>, so this can't be a nested button.
+                            // role/tabIndex + key handler give it keyboard parity; stopPropagation
+                            // opens the preview instead of navigating to the estimate.
+                            role={viewable ? "button" : undefined}
+                            tabIndex={viewable ? 0 : undefined}
+                            onClick={
+                              viewable
+                                ? (e) => {
+                                    e.stopPropagation();
+                                    openPreview(f);
+                                  }
+                                : undefined
+                            }
+                            onKeyDown={
+                              viewable
+                                ? (e) => {
+                                    if (e.key === "Enter" || e.key === " ") {
+                                      e.preventDefault();
+                                      e.stopPropagation();
+                                      openPreview(f);
+                                    }
+                                  }
+                                : undefined
+                            }
+                            className={`flex items-center gap-1.5 min-w-0 ${viewable ? "cursor-pointer hover:underline" : ""}`}
+                          >
                             <Icon
                               style={{ width: 13, height: 13, color: cfg.color, flexShrink: 0 }}
                             />
@@ -532,6 +610,14 @@ export function RfqOverview({
           Create Quote
         </button>
       </div>
+
+      {preview && (
+        <FilePreviewModal
+          file={preview.file}
+          kind={preview.kind}
+          onClose={() => setPreview(null)}
+        />
+      )}
     </div>
   );
 }
