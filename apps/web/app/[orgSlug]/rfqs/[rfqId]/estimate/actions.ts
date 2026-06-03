@@ -1,9 +1,21 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
-import { db } from "@uptool/db";
 import { requireAuth } from "@/lib/auth";
-import { partService, templateService, rfqService } from "@uptool/services";
+import { db } from "@uptool/db";
+import {
+  type AddMaterialInput,
+  type AddOperationInput,
+  type NotesInput,
+  type OverrideField,
+  type QuoteBulkInput,
+  type UpdateMaterialInput,
+  type UpdateOperationInput,
+  estimateService,
+  partService,
+  rfqService,
+  templateService,
+} from "@uptool/services";
+import { revalidatePath } from "next/cache";
 
 async function getOrgId(orgSlug: string, userId: string): Promise<string> {
   const org = await db.query.orgs.findFirst({
@@ -130,6 +142,24 @@ export async function updatePartNotes(formData: FormData) {
   revalidatePath(`/${orgSlug}/rfqs/${rfqId}/estimate`);
 }
 
+// Reset the whole RFQ's estimate (every part) back to a fresh, just-imported
+// state. Delegates to the services layer (single transaction); revalidates the
+// estimate, quote, and RFQ routes so server-rendered views pick up the reset.
+export async function resetEstimate(formData: FormData) {
+  const { userId } = await requireAuth();
+  const orgSlug = formData.get("orgSlug") as string;
+  const rfqParam = formData.get("rfqParam") as string;
+  const rfqId = formData.get("rfqId") as string;
+  const orgId = await getOrgId(orgSlug, userId);
+
+  await rfqService.resetEstimate(orgId, rfqId);
+
+  revalidatePath(`/${orgSlug}/rfqs/${rfqParam}/estimate`, "layout");
+  revalidatePath(`/${orgSlug}/rfqs/${rfqParam}/quote`, "layout");
+  revalidatePath(`/${orgSlug}/rfqs/${rfqParam}`);
+  revalidatePath(`/${orgSlug}/rfqs`);
+}
+
 export async function copyOperations(formData: FormData) {
   const { userId } = await requireAuth();
   const orgSlug = formData.get("orgSlug") as string;
@@ -140,4 +170,202 @@ export async function copyOperations(formData: FormData) {
 
   await partService.copyOperations(orgId, fromPartId, toPartId);
   revalidatePath(`/${orgSlug}/rfqs/${rfqId}/estimate`);
+}
+
+// ─── Estimate-persistence actions (prompt 2) ─────────────────────────────────
+// Typed-arg RPC server actions for the calculator write-path. Unlike the
+// FormData/throwing handlers above, these return { ok, data } | { ok, error }
+// and never throw across the network boundary (prompt 3 calls them directly).
+// requireAuth() runs outside the try so its redirect (unauthed) still propagates.
+
+type ActionResult<T> = { ok: true; data: T } | { ok: false; error: string };
+
+async function run<T>(
+  orgSlug: string,
+  fn: (orgId: string) => Promise<T>,
+  revalidate?: () => void,
+): Promise<ActionResult<T>> {
+  const { userId } = await requireAuth();
+  try {
+    const orgId = await getOrgId(orgSlug, userId);
+    const data = await fn(orgId);
+    revalidate?.();
+    return { ok: true, data };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Unexpected error" };
+  }
+}
+
+function revalidateEstimate(orgSlug: string, rfqParam: string) {
+  revalidatePath(`/${orgSlug}/rfqs/${rfqParam}/estimate`, "layout");
+  revalidatePath(`/${orgSlug}/rfqs/${rfqParam}`);
+}
+
+// — Hydration —
+export async function hydratePartEstimateAction(i: {
+  orgSlug: string;
+  rfqParam: string;
+  partId: string;
+}) {
+  return run(
+    i.orgSlug,
+    (orgId) => estimateService.hydratePartEstimate(orgId, i.partId),
+    () => revalidateEstimate(i.orgSlug, i.rfqParam),
+  );
+}
+
+// — Operations —
+export async function listPartOperationsAction(i: { orgSlug: string; partId: string }) {
+  return run(i.orgSlug, (orgId) => estimateService.listPartOperations(orgId, i.partId));
+}
+
+export async function addPartOperationAction(i: {
+  orgSlug: string;
+  rfqParam: string;
+  partId: string;
+  input: AddOperationInput;
+}) {
+  return run(
+    i.orgSlug,
+    (orgId) => estimateService.addPartOperation(orgId, i.partId, i.input),
+    () => revalidateEstimate(i.orgSlug, i.rfqParam),
+  );
+}
+
+export async function updatePartOperationAction(i: {
+  orgSlug: string;
+  rfqParam: string;
+  operationId: string;
+  patch: UpdateOperationInput;
+}) {
+  return run(
+    i.orgSlug,
+    (orgId) => estimateService.updatePartOperation(orgId, i.operationId, i.patch),
+    () => revalidateEstimate(i.orgSlug, i.rfqParam),
+  );
+}
+
+export async function deletePartOperationAction(i: {
+  orgSlug: string;
+  rfqParam: string;
+  operationId: string;
+}) {
+  return run(
+    i.orgSlug,
+    (orgId) => estimateService.deletePartOperation(orgId, i.operationId),
+    () => revalidateEstimate(i.orgSlug, i.rfqParam),
+  );
+}
+
+export async function reorderPartOperationsAction(i: {
+  orgSlug: string;
+  rfqParam: string;
+  partId: string;
+  orderedIds: string[];
+}) {
+  return run(
+    i.orgSlug,
+    (orgId) => estimateService.reorderPartOperations(orgId, i.partId, i.orderedIds),
+    () => revalidateEstimate(i.orgSlug, i.rfqParam),
+  );
+}
+
+export async function clearPartOperationOverrideAction(i: {
+  orgSlug: string;
+  rfqParam: string;
+  operationId: string;
+  field: OverrideField;
+}) {
+  return run(
+    i.orgSlug,
+    (orgId) => estimateService.clearPartOperationOverride(orgId, i.operationId, i.field),
+    () => revalidateEstimate(i.orgSlug, i.rfqParam),
+  );
+}
+
+// — Materials —
+export async function listPartMaterialsAction(i: { orgSlug: string; partId: string }) {
+  return run(i.orgSlug, (orgId) => estimateService.listPartMaterials(orgId, i.partId));
+}
+
+export async function addPartMaterialAction(i: {
+  orgSlug: string;
+  rfqParam: string;
+  partId: string;
+  input: AddMaterialInput;
+}) {
+  return run(
+    i.orgSlug,
+    (orgId) => estimateService.addPartMaterial(orgId, i.partId, i.input),
+    () => revalidateEstimate(i.orgSlug, i.rfqParam),
+  );
+}
+
+export async function updatePartMaterialAction(i: {
+  orgSlug: string;
+  rfqParam: string;
+  materialId: string;
+  patch: UpdateMaterialInput;
+}) {
+  return run(
+    i.orgSlug,
+    (orgId) => estimateService.updatePartMaterial(orgId, i.materialId, i.patch),
+    () => revalidateEstimate(i.orgSlug, i.rfqParam),
+  );
+}
+
+export async function deletePartMaterialAction(i: {
+  orgSlug: string;
+  rfqParam: string;
+  materialId: string;
+}) {
+  return run(
+    i.orgSlug,
+    (orgId) => estimateService.deletePartMaterial(orgId, i.materialId),
+    () => revalidateEstimate(i.orgSlug, i.rfqParam),
+  );
+}
+
+export async function reorderPartMaterialsAction(i: {
+  orgSlug: string;
+  rfqParam: string;
+  partId: string;
+  orderedIds: string[];
+}) {
+  return run(
+    i.orgSlug,
+    (orgId) => estimateService.reorderPartMaterials(orgId, i.partId, i.orderedIds),
+    () => revalidateEstimate(i.orgSlug, i.rfqParam),
+  );
+}
+
+// — Notes —
+export async function updatePartNotesAction(i: {
+  orgSlug: string;
+  rfqParam: string;
+  partId: string;
+  patch: NotesInput;
+}) {
+  return run(
+    i.orgSlug,
+    (orgId) => estimateService.updatePartNotes(orgId, i.partId, i.patch),
+    () => revalidateEstimate(i.orgSlug, i.rfqParam),
+  );
+}
+
+// — RFQ-level quote bulk —
+export async function updateRfqQuoteBulkAction(i: {
+  orgSlug: string;
+  rfqParam: string;
+  rfqId: string;
+  patch: QuoteBulkInput;
+}) {
+  return run(
+    i.orgSlug,
+    (orgId) => estimateService.updateRfqQuoteBulk(orgId, i.rfqId, i.patch),
+    () => {
+      revalidateEstimate(i.orgSlug, i.rfqParam);
+      revalidatePath(`/${i.orgSlug}/rfqs/${i.rfqParam}/quote`, "layout");
+    },
+  );
 }

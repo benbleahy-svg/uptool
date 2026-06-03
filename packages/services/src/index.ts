@@ -22,3 +22,22 @@ export { templateService } from "./template";
 export type { CreateTemplateInput } from "./template";
 export { memberService } from "./member";
 export type { OrgMember } from "./member";
+export { estimateService } from "./estimate";
+export type { PartOperation, PartMaterial } from "./estimate";
+export { ValidationError, NotFoundError } from "./estimate/errors";
+export {
+  buildDefaultOperations,
+  buildDefaultMaterials,
+  DEFAULT_HOURLY_RATE_CENTS,
+} from "./estimate/defaults";
+export type {
+  AddOperationInput,
+  UpdateOperationInput,
+  AddMaterialInput,
+  UpdateMaterialInput,
+  NotesInput,
+  QuoteBulkInput,
+  OverrideField,
+  LeadTimeVariant,
+  VolumeDiscountTierInput,
+} from "./estimate/schemas";
