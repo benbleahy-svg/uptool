@@ -255,12 +255,26 @@ export const rfqs = pgTable(
     assigneeId: uuid("assignee_id").references(() => users.id, { onDelete: "set null" }),
     receivedAt: timestamp("received_at", { withTimezone: true }).notNull(),
     lastEmailAt: timestamp("last_email_at", { withTimezone: true }),
+    // RFQ-wide default markup for the Quote page; per-line overrides live in
+    // quote_line_items.markupPct. Bulk discount + lead-time variants are likewise
+    // RFQ-level (no row exists in `quotes` until a quote is created).
+    quoteBulkMarkupPct: numeric("quote_bulk_markup_pct", { precision: 5, scale: 2 }),
+    quoteBulkDiscountPct: numeric("quote_bulk_discount_pct", { precision: 5, scale: 2 }),
+    quoteLeadTimeVariants: jsonb("quote_lead_time_variants"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
     index("idx_rfqs_org_status").on(t.orgId, t.status),
     index("idx_rfqs_org_received").on(t.orgId, t.receivedAt),
+    check(
+      "rfqs_quote_bulk_markup_pct_check",
+      sql`${t.quoteBulkMarkupPct} IS NULL OR (${t.quoteBulkMarkupPct} >= 0 AND ${t.quoteBulkMarkupPct} <= 100)`,
+    ),
+    check(
+      "rfqs_quote_bulk_discount_pct_check",
+      sql`${t.quoteBulkDiscountPct} IS NULL OR (${t.quoteBulkDiscountPct} >= 0 AND ${t.quoteBulkDiscountPct} <= 100)`,
+    ),
   ],
 );
 
@@ -459,6 +473,10 @@ export const parts = pgTable(
     // When the estimator clicked "Complete" for this part. Null = not yet
     // finished. Drives the green ✓ on the dashboard Parts column.
     estimateCompletedAt: timestamp("estimate_completed_at", { withTimezone: true }),
+    // When the calculator's default operations/materials were first seeded into
+    // the DB for this part. Null = the part has never been opened in the
+    // calculator yet (re-hydration logic seeds defaults on first open).
+    estimateHydratedAt: timestamp("estimate_hydrated_at", { withTimezone: true }),
     // CAD thumbnail rendered server-side at ingest (object-storage key + status).
     // null status = no CAD linked yet.
     thumbnailKey: text("thumbnail_key"),
@@ -473,6 +491,14 @@ export const parts = pgTable(
     ),
   ],
 );
+
+/** A volume-discount tier on an operation, stored in `volume_discount_tiers`
+ *  jsonb (sorted by minQty asc). Not validated at SQL level — the services
+ *  layer enforces shape/ordering. */
+export interface VolumeDiscountTier {
+  minQty: number;
+  discountPct: number;
+}
 
 export const partOperations = pgTable(
   "part_operations",
@@ -491,9 +517,56 @@ export const partOperations = pgTable(
     hourlyRateCents: integer("hourly_rate_cents").notNull().default(0),
     isNonRecurring: boolean("is_non_recurring").notNull().default(false),
     sortOrder: integer("sort_order").notNull().default(0),
+    // Manual price override ("blue-stuck" cell). Null = use the calculated price.
+    unitPriceOverrideCents: integer("unit_price_override_cents"),
+    // Operation-level markup %. Null = inherit / none.
+    markupPct: numeric("markup_pct", { precision: 5, scale: 2 }),
+    // Per-operation overrides of the template hourly rates. Null = use template.
+    setupRateCents: integer("setup_rate_cents"),
+    runtimeRateCents: integer("runtime_rate_cents"),
+    // [{ minQty, discountPct }] sorted by minQty asc; null = no volume discount.
+    volumeDiscountTiers: jsonb("volume_discount_tiers").$type<VolumeDiscountTier[]>(),
+    // Flips true the moment the user edits anything on this row; re-hydration
+    // uses it to avoid overwriting user edits with re-seeded defaults.
+    userTouched: boolean("user_touched").notNull().default(false),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [index("idx_part_operations_part").on(t.partId)],
+  (t) => [
+    index("idx_part_operations_part").on(t.partId),
+    check(
+      "part_operations_markup_pct_check",
+      sql`${t.markupPct} IS NULL OR (${t.markupPct} >= 0 AND ${t.markupPct} <= 100)`,
+    ),
+  ],
+);
+
+/**
+ * One row per material card on a part (Sheet / Round Bar / Tube / …). Card
+ * fields are type-specific so they live in `fields` jsonb. Carries `orgId` for
+ * RLS parity with `part_operations` (the org-scoping pattern across the schema).
+ */
+export const partMaterials = pgTable(
+  "part_materials",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id")
+      .notNull()
+      .references(() => orgs.id, { onDelete: "cascade" }),
+    partId: uuid("part_id")
+      .notNull()
+      .references(() => parts.id, { onDelete: "cascade" }),
+    materialType: text("material_type").notNull(), // 'sheet' | 'round_bar' | 'tube' | …
+    fields: jsonb("fields").$type<Record<string, unknown>>().notNull(),
+    unitPriceOverrideCents: integer("unit_price_override_cents"),
+    sortOrder: integer("sort_order").notNull().default(0),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("idx_part_materials_org").on(t.orgId),
+    index("idx_part_materials_part").on(t.partId),
+    index("idx_part_materials_part_sort").on(t.partId, t.sortOrder),
+  ],
 );
 
 export const quotes = pgTable(
@@ -566,12 +639,18 @@ export const partsRelations = relations(parts, ({ one, many }) => ({
   rfq: one(rfqs, { fields: [parts.rfqId], references: [rfqs.id] }),
   attachments: many(attachments),
   operations: many(partOperations),
+  materials: many(partMaterials),
   quoteLineItems: many(quoteLineItems),
 }));
 
 export const partOperationsRelations = relations(partOperations, ({ one }) => ({
   org: one(orgs, { fields: [partOperations.orgId], references: [orgs.id] }),
   part: one(parts, { fields: [partOperations.partId], references: [parts.id] }),
+}));
+
+export const partMaterialsRelations = relations(partMaterials, ({ one }) => ({
+  org: one(orgs, { fields: [partMaterials.orgId], references: [orgs.id] }),
+  part: one(parts, { fields: [partMaterials.partId], references: [parts.id] }),
 }));
 
 export const quotesRelations = relations(quotes, ({ one, many }) => ({

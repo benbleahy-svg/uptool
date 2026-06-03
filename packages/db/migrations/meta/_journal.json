@@ -148,6 +148,13 @@
       "when": 1780350918375,
       "tag": "0020_omniscient_hellfire_club",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1780501499119,
+      "tag": "0021_dark_diamondback",
+      "breakpoints": true
     }
   ]
 }
