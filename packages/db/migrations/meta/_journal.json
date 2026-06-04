@@ -162,6 +162,13 @@
       "when": 1780518541295,
       "tag": "0022_quote_line_item_tiers",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1780560353965,
+      "tag": "0023_parts_hierarchy",
+      "breakpoints": true
     }
   ]
 }

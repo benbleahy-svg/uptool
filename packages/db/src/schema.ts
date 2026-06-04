@@ -1,5 +1,6 @@
 import { relations } from "drizzle-orm";
 import {
+  type AnyPgColumn,
   boolean,
   check,
   index,
@@ -457,6 +458,16 @@ export const parts = pgTable(
     rfqId: uuid("rfq_id")
       .notNull()
       .references(() => rfqs.id, { onDelete: "cascade" }),
+    // Self-referential parent for assembly → sub-assembly → part nesting. Null =
+    // top-level part. On parent delete, children promote to top-level (set null)
+    // rather than cascade-deleting the sub-tree. Cycle prevention is enforced in
+    // the services/UI layer, not in SQL.
+    parentPartId: uuid("parent_part_id").references((): AnyPgColumn => parts.id, {
+      onDelete: "set null",
+    }),
+    // How many of this part are required per parent assembly (BOM line quantity).
+    // 1 for top-level parts and single-use children.
+    assemblyQuantity: integer("assembly_quantity").notNull().default(1),
     partNumber: text("part_number"),
     revision: text("revision"),
     description: text("description"),
@@ -485,6 +496,7 @@ export const parts = pgTable(
   },
   (t) => [
     index("idx_parts_rfq").on(t.rfqId),
+    index("idx_parts_parent").on(t.parentPartId),
     check(
       "parts_thumbnail_status_check",
       sql`${t.thumbnailStatus} IS NULL OR ${t.thumbnailStatus} IN ('pending', 'ready', 'failed')`,
@@ -660,6 +672,12 @@ export const operationTemplates = pgTable(
 export const partsRelations = relations(parts, ({ one, many }) => ({
   org: one(orgs, { fields: [parts.orgId], references: [orgs.id] }),
   rfq: one(rfqs, { fields: [parts.rfqId], references: [rfqs.id] }),
+  parent: one(parts, {
+    fields: [parts.parentPartId],
+    references: [parts.id],
+    relationName: "part_hierarchy",
+  }),
+  children: many(parts, { relationName: "part_hierarchy" }),
   attachments: many(attachments),
   operations: many(partOperations),
   materials: many(partMaterials),

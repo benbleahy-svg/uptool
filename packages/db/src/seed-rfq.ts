@@ -495,6 +495,135 @@ Acme GmbH`,
       { orgId: org.id, customerId: flagged.id, email: "tryuptool@gmail.com", name: null },
     ]);
     console.log(`Seeded flagged demo company "${FLAGGED_NAME}" (${FLAGGED_DOMAIN})`);
+
+    // ── Assembly demo RFQ (idempotent) ──────────────────────────────────────
+    // A 3-level hierarchy (assembly → sub-assembly → leaf parts) so the estimate
+    // page's nested-parts rendering is visible. `parentPartId` links each row to
+    // its parent; `assemblyQuantity` is the BOM line count (×N badge). Title-case
+    // processType values match the badge map + add-part dropdown so pills colour
+    // correctly (yellow "Assembly", etc.).
+    const ASM_DOMAIN = "assembly-demo.test";
+    await tx
+      .delete(schema.rfqs)
+      .where(and(eq(schema.rfqs.orgId, org.id), eq(schema.rfqs.rfqNumber, 1005)));
+    await tx
+      .delete(schema.contacts)
+      .where(and(eq(schema.contacts.orgId, org.id), like(schema.contacts.email, `%@${ASM_DOMAIN}`)));
+    await tx
+      .delete(schema.customers)
+      .where(and(eq(schema.customers.orgId, org.id), eq(schema.customers.domain, ASM_DOMAIN)));
+
+    const [asmCust] = await tx
+      .insert(schema.customers)
+      .values({ orgId: org.id, name: "Demo — Assembly GmbH", domain: ASM_DOMAIN, source: "manual" })
+      .returning();
+    if (!asmCust) throw new Error("Failed to insert assembly demo customer");
+
+    const [asmContact] = await tx
+      .insert(schema.contacts)
+      .values({ orgId: org.id, customerId: asmCust.id, email: `buyer@${ASM_DOMAIN}`, name: "Test Buyer" })
+      .returning();
+    if (!asmContact) throw new Error("Failed to insert assembly demo contact");
+
+    const asmReceivedAt = new Date("2026-05-25T08:00:00Z");
+    const [asmRfq] = await tx
+      .insert(schema.rfqs)
+      .values({
+        orgId: org.id,
+        rfqNumber: 1005,
+        customerId: asmCust.id,
+        contactId: asmContact.id,
+        subject: "Anfrage Getriebe-Baugruppe (Assembly + Sub-Assembly)",
+        source: "manual",
+        quantityBreaks: [1, 10, 100],
+        status: "new",
+        receivedAt: asmReceivedAt,
+        lastEmailAt: asmReceivedAt,
+      })
+      .returning();
+    if (!asmRfq) throw new Error("Failed to insert assembly demo RFQ");
+
+    const addAsmPart = async (v: {
+      partNumber: string;
+      description: string;
+      processType: string;
+      sortOrder: number;
+      parentPartId?: string;
+      assemblyQuantity?: number;
+    }) => {
+      const [p] = await tx
+        .insert(schema.parts)
+        .values({
+          orgId: org.id,
+          rfqId: asmRfq.id,
+          partNumber: v.partNumber,
+          description: v.description,
+          processType: v.processType,
+          sortOrder: v.sortOrder,
+          parentPartId: v.parentPartId ?? null,
+          assemblyQuantity: v.assemblyQuantity ?? 1,
+        })
+        .returning();
+      if (!p) throw new Error(`Failed to insert assembly part ${v.partNumber}`);
+      return p;
+    };
+
+    // Level 0 — top assembly
+    const gearbox = await addAsmPart({
+      partNumber: "GBX-100",
+      description: "Gearbox Assembly",
+      processType: "Assembly",
+      sortOrder: 0,
+    });
+    // Level 1 — sub-assembly + direct children of the gearbox
+    const housing = await addAsmPart({
+      partNumber: "HSG-200",
+      description: "Housing Assembly",
+      processType: "Assembly",
+      sortOrder: 0,
+      parentPartId: gearbox.id,
+    });
+    await addAsmPart({
+      partNumber: "GS-300",
+      description: "Gear Set",
+      processType: "CNC Turning",
+      sortOrder: 1,
+      parentPartId: gearbox.id,
+    });
+    await addAsmPart({
+      partNumber: "FST-M6",
+      description: "Fastener M6×20 (DIN 912)",
+      processType: "Other",
+      sortOrder: 2,
+      parentPartId: gearbox.id,
+      assemblyQuantity: 8,
+    });
+    // Level 2 — leaf parts of the Housing sub-assembly
+    await addAsmPart({
+      partNumber: "HSG-201",
+      description: "Housing Top",
+      processType: "CNC Milling",
+      sortOrder: 0,
+      parentPartId: housing.id,
+    });
+    await addAsmPart({
+      partNumber: "HSG-202",
+      description: "Housing Bottom",
+      processType: "CNC Milling",
+      sortOrder: 1,
+      parentPartId: housing.id,
+    });
+    await addAsmPart({
+      partNumber: "HSG-203",
+      description: "Gasket",
+      processType: "Sheet Metal",
+      sortOrder: 2,
+      parentPartId: housing.id,
+      assemblyQuantity: 2,
+    });
+    console.log(
+      "Created RFQ #1005 — assembly demo (Gearbox → Housing → Top/Bottom/Gasket×2, + Gear Set, Fasteners×8)",
+    );
   });
 
   console.log("Test RFQ seed complete.");

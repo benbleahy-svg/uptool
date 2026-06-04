@@ -78,6 +78,10 @@ export default async function EstimatePage({ params }: Props) {
   const t = await getTranslations("estimate");
   const tRfq = await getTranslations("rfqs");
 
+  // Flatten the parent/child hierarchy into a depth-annotated, DFS-ordered list
+  // so each assembly renders immediately above its (indented) sub-parts.
+  const orderedParts = buildPartTree(parts);
+
   return (
     <div className="space-y-6 max-w-5xl">
       {/* Part navigation (only shown when there are 2+ parts) */}
@@ -99,7 +103,7 @@ export default async function EstimatePage({ params }: Props) {
       {parts.length === 0 ? (
         <p className="text-sm text-[hsl(var(--muted-foreground))]">{t("no_parts")}</p>
       ) : (
-        parts.map((part) => {
+        orderedParts.map(({ part, depth }) => {
           const costs = partService.computeCostsForPart(
             part,
             part.operations,
@@ -110,16 +114,31 @@ export default async function EstimatePage({ params }: Props) {
             <div
               id={`part-${part.id}`}
               key={part.id}
-              className="rounded-md border border-[hsl(var(--border))] overflow-hidden"
+              style={depth > 0 ? { marginLeft: depth * 28 } : undefined}
+              className={`rounded-md border border-[hsl(var(--border))] overflow-hidden${
+                depth > 0 ? " border-l-2 border-l-[hsl(var(--primary)/0.4)]" : ""
+              }`}
             >
               {/* Part header */}
               <div className="flex items-center justify-between px-4 py-3 bg-[hsl(var(--muted)/0.4)] border-b border-[hsl(var(--border))]">
                 <div className="flex items-start gap-2 flex-wrap">
                   <div>
-                    <p className="text-sm font-semibold">
-                      {part.partNumber ?? "—"}
-                      {part.revision ? ` Rev ${part.revision}` : ""}
-                      {part.description ? ` — ${part.description}` : ""}
+                    <p className="text-sm font-semibold flex items-center gap-1.5">
+                      {depth > 0 && (
+                        <span className="text-[hsl(var(--muted-foreground))]" aria-hidden>
+                          └
+                        </span>
+                      )}
+                      <span>
+                        {part.partNumber ?? "—"}
+                        {part.revision ? ` Rev ${part.revision}` : ""}
+                        {part.description ? ` — ${part.description}` : ""}
+                      </span>
+                      {part.assemblyQuantity > 1 && (
+                        <span className="rounded bg-[hsl(var(--muted))] px-1.5 py-0.5 text-xs font-medium text-[hsl(var(--muted-foreground))]">
+                          ×{part.assemblyQuantity}
+                        </span>
+                      )}
                     </p>
                     <p className="text-xs text-[hsl(var(--muted-foreground))]">
                       {[part.material, part.finish].filter(Boolean).join(" · ")}
@@ -406,4 +425,40 @@ function Field({ name, label }: { name: string; label: string }) {
       />
     </div>
   );
+}
+
+/**
+ * Flatten a flat, already-sorted part list into DFS order annotated with depth,
+ * using `parentPartId` for assembly → sub-assembly → part nesting. Roots (no
+ * parent, or a parent outside this RFQ) come first in their existing order; each
+ * node's children follow immediately, indented one level. Parts trapped in a
+ * cycle are surfaced at the top level so nothing silently disappears.
+ */
+function buildPartTree<T extends { id: string; parentPartId: string | null }>(
+  parts: T[],
+): { part: T; depth: number }[] {
+  const ids = new Set(parts.map((p) => p.id));
+  const childrenByParent = new Map<string, T[]>();
+  const roots: T[] = [];
+  for (const p of parts) {
+    if (p.parentPartId && ids.has(p.parentPartId)) {
+      const arr = childrenByParent.get(p.parentPartId) ?? [];
+      arr.push(p);
+      childrenByParent.set(p.parentPartId, arr);
+    } else {
+      roots.push(p);
+    }
+  }
+
+  const out: { part: T; depth: number }[] = [];
+  const visited = new Set<string>();
+  const visit = (node: T, depth: number) => {
+    if (visited.has(node.id)) return;
+    visited.add(node.id);
+    out.push({ part: node, depth });
+    for (const child of childrenByParent.get(node.id) ?? []) visit(child, depth + 1);
+  };
+  for (const root of roots) visit(root, 0);
+  for (const p of parts) if (!visited.has(p.id)) out.push({ part: p, depth: 0 });
+  return out;
 }
