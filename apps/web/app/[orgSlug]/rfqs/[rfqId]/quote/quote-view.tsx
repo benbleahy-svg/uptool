@@ -19,14 +19,17 @@ import {
   updateQuotePartNoteAction,
 } from "./actions";
 import {
+  type EditableField,
   type QuoteGroup,
   type QuoteLine,
   type QuotePartMeta,
   buildSnapshot,
-  computeQuoteUnitCents,
   displayUnitCents,
   isTempId,
   newTempId,
+  priced,
+  reconcileAddedLine,
+  revertLineFields,
   rowToLine,
 } from "./quote-state";
 
@@ -54,12 +57,6 @@ const parseWeeks = (s: string): number | null => {
   const n = Math.round(parseDecimal(s));
   return Number.isFinite(n) && n >= 0 ? n : null;
 };
-
-/** Re-price a line from its frozen cost + current markup (optimistic, mirrors server). */
-function priced(line: QuoteLine): QuoteLine {
-  const unit = computeQuoteUnitCents(line.costPerUnitCents, line.markup);
-  return { ...line, quoteUnitPriceCents: unit, quoteTotalCents: unit * line.quantity };
-}
 
 export function QuoteView({
   customer,
@@ -148,7 +145,14 @@ export function QuoteView({
           lineItemId: lineId,
           patch: serverPatch,
         }),
-      () => setLines((cur) => cur.map((l) => (l.id === lineId ? before : l))),
+      // Field-scoped: restore ONLY the edited field(s) onto the current line so a
+      // failed save doesn't clobber a sibling field committed separately.
+      () =>
+        setLines((cur) =>
+          cur.map((l) =>
+            l.id === lineId ? revertLineFields(l, before, Object.keys(patch) as EditableField[]) : l,
+          ),
+        ),
     );
   }
 
@@ -176,9 +180,28 @@ export function QuoteView({
         rfqId: ctx.rfqId,
         input: { partId: part.partId, quantity, costPerUnitCents, markupPct: 0 },
       });
-      if (res.ok) setLines((cur) => cur.map((l) => (l.id === tmp ? rowToLine(res.data) : l)));
+      if (res.ok) reconcileOrDeleteOrphan(tmp, res.data);
       return res;
     }, () => setLines((cur) => cur.filter((l) => l.id !== tmp)));
+  }
+
+  // Reconcile a completed add: swap temp→real, or delete the created row if the
+  // temp was removed mid-flight (rapid add→delete). Mirrors estimate epic E3.
+  function reconcileOrDeleteOrphan(tmp: string, row: Parameters<typeof rowToLine>[0]) {
+    if (!ctx) return;
+    let orphanId: string | null = null;
+    setLines((cur) => {
+      const r = reconcileAddedLine(cur, tmp, row);
+      orphanId = r.orphanId;
+      return r.lines;
+    });
+    if (orphanId) {
+      void deleteQuoteLineItemAction({
+        orgSlug: ctx.orgSlug,
+        rfqParam: ctx.rfqParam,
+        lineItemId: orphanId,
+      }).catch(() => {});
+    }
   }
 
   function generateFromEstimate() {
@@ -212,7 +235,7 @@ export function QuoteView({
           rfqId: ctx.rfqId,
           input: { partId: part.partId, quantity: e.quantity, costPerUnitCents: e.costPerUnitCents, markupPct: 0 },
         });
-        if (res.ok) setLines((cur) => cur.map((l) => (l.id === tmp ? rowToLine(res.data) : l)));
+        if (res.ok) reconcileOrDeleteOrphan(tmp, res.data);
         return res;
       }, () => setLines((cur) => cur.filter((l) => l.id !== tmp)));
     }
@@ -348,7 +371,7 @@ export function QuoteView({
               leadTimeWeeks: parseWeeks(opt.leadTime),
             },
           });
-          if (res.ok) setLines((cur) => cur.map((l) => (l.id === tmp ? rowToLine(res.data) : l)));
+          if (res.ok) reconcileOrDeleteOrphan(tmp, res.data);
           return res;
         }, () => setLines((cur) => cur.filter((l) => l.id !== tmp)));
       }

@@ -1,6 +1,7 @@
 import { resolveRfq } from "@/lib/resolve-rfq";
 import { db } from "@uptool/db";
-import { DEFAULT_QUANTITY_BREAKS, partService, quoteService } from "@uptool/services";
+import { DEFAULT_QUANTITY_BREAKS, estimateService, partService, quoteService } from "@uptool/services";
+import { richEstimateByQty } from "./estimate-cost";
 import { QuoteView } from "./quote-view";
 import { type QuoteLine, type QuotePartMeta, rowToLine } from "./quote-state";
 
@@ -44,6 +45,15 @@ export default async function QuotePage({ params }: Props) {
       }),
     ]);
 
+    // Rich per-qty estimate cost (matches what the calculator shows) is the
+    // snapshot source for a new tier — see estimate-cost.ts / A-Option-3.
+    const materialsByPart = new Map<string, Awaited<ReturnType<typeof estimateService.listPartMaterials>>>();
+    await Promise.all(
+      partRows.map(async (p) => {
+        materialsByPart.set(p.id, await estimateService.listPartMaterials(org.id, p.id));
+      }),
+    );
+
     parts = partRows.map((p) => ({
       partId: p.id,
       partNumber: p.partNumber ?? "—",
@@ -51,7 +61,7 @@ export default async function QuotePage({ params }: Props) {
       description: p.description ?? "",
       noBid: p.isNoBid,
       note: p.notesExternal ?? "",
-      estimateByQty: partService.computeCostsForPart(p, p.operations, quantityBreaks),
+      estimateByQty: richEstimateByQty(p.operations, materialsByPart.get(p.id) ?? [], quantityBreaks),
     }));
 
     initialLines = lineRows.map(rowToLine);

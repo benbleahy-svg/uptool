@@ -58,6 +58,38 @@ export function displayUnitCents(unitCents: number, round: boolean): number {
   return round ? Math.round(unitCents / 100) * 100 : unitCents;
 }
 
+/** Re-price a line from its frozen cost + current markup (optimistic; mirrors the
+ *  server: round(cost × (1 + markup/100))). */
+export function priced(line: QuoteLine): QuoteLine {
+  const unit = computeQuoteUnitCents(line.costPerUnitCents, line.markup);
+  return { ...line, quoteUnitPriceCents: unit, quoteTotalCents: unit * line.quantity };
+}
+
+/** The user-editable, per-row, debounced fields. */
+export type EditableField = "markup" | "quantity" | "leadTimeWeeks" | "tierLabel";
+
+/**
+ * Field-scoped revert (mirrors the estimate's revertOpField): restore ONLY the
+ * given fields from `before` onto the CURRENT line, re-pricing if markup/quantity
+ * was restored. A failed save on one field must not clobber a sibling field that
+ * was edited+committed separately.
+ */
+export function revertLineFields(
+  current: QuoteLine,
+  before: QuoteLine,
+  fields: EditableField[],
+): QuoteLine {
+  let next = { ...current };
+  for (const f of fields) {
+    if (f === "markup") next.markup = before.markup;
+    else if (f === "quantity") next.quantity = before.quantity;
+    else if (f === "leadTimeWeeks") next.leadTimeWeeks = before.leadTimeWeeks;
+    else if (f === "tierLabel") next.tierLabel = before.tierLabel;
+  }
+  if (fields.includes("markup") || fields.includes("quantity")) next = priced(next);
+  return next;
+}
+
 const TEMP_PREFIX = "tmp-";
 export const isTempId = (id: string) => id.startsWith(TEMP_PREFIX);
 export const newTempId = () => `${TEMP_PREFIX}${crypto.randomUUID()}`;
@@ -95,6 +127,20 @@ export function rowToLine(r: QuoteLineRow): QuoteLine {
     quoteTotalCents: r.quoteTotalCents,
     sortOrder: r.sortOrder,
   };
+}
+
+/**
+ * Reconcile a completed add: replace the temp row with the real row if the temp
+ * is still present; if it was removed mid-flight (rapid add→delete), report the
+ * just-created row as an orphan to delete. Mirrors the estimate epic's E3 guard.
+ */
+export function reconcileAddedLine(
+  lines: QuoteLine[],
+  tempId: string,
+  row: QuoteLineRow,
+): { lines: QuoteLine[]; orphanId: string | null } {
+  if (!lines.some((l) => l.id === tempId)) return { lines, orphanId: row.id };
+  return { lines: lines.map((l) => (l.id === tempId ? rowToLine(row) : l)), orphanId: null };
 }
 
 // ─── Preview/Send snapshot (client store; the Send epic will source from DB) ────

@@ -119,6 +119,7 @@ export interface QuotePdfProps {
     markupPct: number;
     quotePriceCents: number;
     leadTimeWeeks: number | null;
+    tierLabel?: string | null;
     isNoBid: boolean;
     notesExternal?: string | null;
   }>;
@@ -158,7 +159,12 @@ export function QuotePdf(props: QuotePdfProps): ReactElement<DocumentProps> {
           {props.lineItems.map((li, i) => (
             <View key={`${li.partLabel}-${li.quantity}-${i}`}>
               <View style={styles.tableRow}>
-                <Text style={[styles.colPart, styles.td]}>{li.partLabel}</Text>
+                <View style={styles.colPart}>
+                  <Text style={styles.td}>{li.partLabel}</Text>
+                  {li.tierLabel ? (
+                    <Text style={{ fontSize: 8, color: "#6B7280" }}>{li.tierLabel}</Text>
+                  ) : null}
+                </View>
                 <Text style={[styles.colQty, styles.td]}>{li.quantity}</Text>
                 {li.isNoBid ? (
                   <>

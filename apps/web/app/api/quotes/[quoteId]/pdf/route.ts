@@ -17,7 +17,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
     with: {
       lineItems: {
         with: { part: true },
-        orderBy: (li, { asc }) => [asc(li.createdAt)],
+        orderBy: (li, { asc }) => [asc(li.sortOrder)],
       },
       rfq: { with: { customer: true, contact: true } },
       createdBy: true,
@@ -60,6 +60,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
           li.quoteUnitPriceCents ??
           quoteService.computeQuotePrice(li.costPerUnitCents, Number(li.markupPct)),
         leadTimeWeeks: li.leadTimeWeeks,
+        tierLabel: li.tierLabel,
         isNoBid: li.isNoBid,
         notesExternal: li.part?.notesExternal ?? null,
       })),
