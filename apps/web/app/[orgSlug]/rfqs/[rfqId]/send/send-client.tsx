@@ -1,184 +1,210 @@
 "use client";
 
-// Fetches the server-rendered quote PDF (one source of truth) and shares that
-// single blob across the preview, Download, Print, and the email attachment.
-// Reads the quote positions from the client snapshot; everything else comes from
-// the server-provided spec. Handles the stubbed send + the confirmation card.
+// Send page: left = the DIN-5008 quote PDF from /api/quotes/[id]/pdf (persisted
+// rows, pdf.js canvas — preview == attachment); right = the email composer. Send
+// goes through sendQuoteAction (Resend + status transition). An already-sent
+// quote shows its sentAt + Re-send + Create-revision instead of first-send.
 
-import { fetchQuotePdf } from "@/lib/quoting/fetch-quote-pdf";
 import {
-  type DocInfo,
-  type DocRecipient,
-  type DocTemplateSpec,
-  positionsFromSnapshot,
-} from "@/lib/quoting/quote-doc";
-import { getQuoteSnapshot, markQuoteSent } from "@/lib/quoting/quote-store";
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+  toast,
+} from "@uptool/ui";
+import { useTranslations } from "next-intl";
 import { useRouter } from "next/navigation";
 import * as React from "react";
-import { buildDefaultSnapshot } from "../quote/quote-state";
-import { EmailComposer, type SendPayload } from "./email-composer";
+import { createQuoteRevisionAction, sendQuoteAction } from "./actions";
 import { QuotePdfPane } from "./quote-pdf-pane";
-import type { OriginalEmail } from "./send-stub";
-
-interface Props {
-  orgSlug: string;
-  rfqParam: string;
-  rfqId: string;
-  rfqNumber: number;
-  template: DocTemplateSpec;
-  recipient: DocRecipient;
-  info: DocInfo;
-  customerEmail: string;
-  contactName: string;
-  original: OriginalEmail;
-}
+import type { SendViewProps } from "./send-view";
 
 export function SendClient({
   orgSlug,
   rfqParam,
   rfqId,
-  rfqNumber,
-  template,
-  recipient,
-  info,
-  customerEmail,
-  contactName,
-  original,
-}: Props) {
+  quoteId,
+  quoteNumber,
+  status,
+  sentAtISO,
+  hasSentQuote,
+  defaultTo,
+  defaultSubject,
+  defaultBody,
+}: SendViewProps) {
+  const t = useTranslations("send");
   const router = useRouter();
-  const [snapshot] = React.useState(
-    () => getQuoteSnapshot(rfqId) ?? buildDefaultSnapshot(rfqNumber),
-  );
-  const [submitted, setSubmitted] = React.useState(false);
+
+  const [to, setTo] = React.useState(defaultTo);
+  const [subject, setSubject] = React.useState(defaultSubject);
+  const [body, setBody] = React.useState(defaultBody);
+  const [sending, setSending] = React.useState(false);
+  const [confirmOpen, setConfirmOpen] = React.useState(false);
+
   const [pdf, setPdf] = React.useState<{ url: string; blob: Blob } | null>(null);
   const [pdfError, setPdfError] = React.useState(false);
   const startedRef = React.useRef(false);
   const urlRef = React.useRef<string | null>(null);
 
-  // Render the PDF once on the server; reuse the one blob everywhere (preview,
-  // Download, Print, email attachment). startedRef makes this a single fetch even
-  // under React StrictMode's double-invoke; the data is stable for the page life.
+  // Fetch the server-rendered PDF once; the blob feeds preview + Download/Print.
   React.useEffect(() => {
     if (startedRef.current) return;
     startedRef.current = true;
-    fetchQuotePdf({
-      orgSlug,
-      template,
-      recipient,
-      info,
-      positions: positionsFromSnapshot(snapshot),
-    })
+    fetch(`/api/quotes/${quoteId}/pdf`)
+      .then((r) => {
+        if (!r.ok) throw new Error(`pdf ${r.status}`);
+        return r.blob();
+      })
       .then((blob) => {
         urlRef.current = URL.createObjectURL(blob);
         setPdf({ url: urlRef.current, blob });
       })
       .catch(() => setPdfError(true));
-  }, [orgSlug, template, recipient, info, snapshot]);
+  }, [quoteId]);
 
-  // Revoke the object URL on unmount only — never on re-render.
-  React.useEffect(() => {
-    return () => {
+  React.useEffect(
+    () => () => {
       if (urlRef.current) URL.revokeObjectURL(urlRef.current);
-    };
-  }, []);
+    },
+    [],
+  );
 
-  const downloadName = `${template.companyName} Quote ${info.quoteNo} ${info.dateISO.slice(0, 10)}.pdf`;
-  const attachmentName = `${template.companyName} Quote ${info.quoteNo}`;
+  const isSent = status === "sent";
+  const isRevision = status === "draft" && hasSentQuote;
+  const downloadName = `Quote-${quoteNumber}.pdf`;
 
-  function handleSend(payload: SendPayload) {
-    // Stub: assemble + log the outgoing attachments — the live quote PDF (when
-    // attached) plus the user's files — so the real send epic has the shape.
-    const attachments = [
-      ...(payload.quoteAttached && pdf
-        ? [{ kind: "quote", name: downloadName, size: pdf.blob.size, type: "application/pdf" }]
-        : []),
-      ...payload.userFiles.map((f) => ({ kind: "file", ...f })),
-    ];
-    console.log("[send quote] reply on thread", {
-      thread: original.replyFromEmail,
-      ...payload,
-      attachments,
-      attachmentCount: attachments.length,
-    });
-    markQuoteSent(rfqId, new Date().toISOString());
-    setSubmitted(true);
+  async function doSend() {
+    setSending(true);
+    const res = await sendQuoteAction({ orgSlug, rfqParam, rfqId, to, subject, body });
+    setSending(false);
+    setConfirmOpen(false);
+    if (res.ok) {
+      toast.success(t("sent"));
+      router.refresh();
+    } else {
+      toast.error(t("send_failed"));
+    }
   }
 
-  if (submitted) {
-    return (
-      <QuoteCompleteCard
-        rfqNumber={rfqNumber}
-        onViewRfq={() => router.push(`/${orgSlug}/rfqs/${rfqParam}`)}
-        onRevise={() => router.push(`/${orgSlug}/rfqs/${rfqParam}/quote`)}
-      />
-    );
+  async function doRevision() {
+    const res = await createQuoteRevisionAction({ orgSlug, rfqParam, rfqId });
+    if (res.ok) {
+      toast.success(t("revision"));
+      router.push(`/${orgSlug}/rfqs/${rfqParam}/quote`);
+    } else {
+      toast.error(t("send_failed"));
+    }
   }
 
   return (
     <div className="flex h-full">
-      {/* Equal-width panes: preview | composer */}
       <div className="min-w-0 flex-1 basis-1/2">
         <QuotePdfPane
           blob={pdf?.blob ?? null}
           url={pdf?.url ?? null}
           loading={!pdf && !pdfError}
           error={pdfError}
-          quoteLabel={info.quoteNo}
+          quoteLabel={String(quoteNumber)}
           downloadName={downloadName}
         />
       </div>
-      <aside className="min-w-0 flex-1 basis-1/2 border-l border-gray-200">
-        <EmailComposer
-          original={original}
-          customerEmail={customerEmail}
-          contactName={contactName}
-          quoteNumber={snapshot.quoteNumber}
-          attachmentName={attachmentName}
-          quoteBytes={pdf?.blob.size ?? 0}
-          onSend={handleSend}
-        />
+
+      <aside className="min-w-0 flex-1 basis-1/2 overflow-auto border-l border-gray-200 p-6">
+        <div className="mb-4 flex items-center gap-3">
+          <h1 className="text-xl font-bold text-gray-900">{t("send_quote")}</h1>
+          {isRevision && (
+            <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-800">
+              {t("revision_badge")}
+            </span>
+          )}
+        </div>
+
+        {isSent && sentAtISO && (
+          <div className="mb-4 rounded-md border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800">
+            {t("sent_at", { date: new Date(sentAtISO).toLocaleString() })}
+          </div>
+        )}
+
+        <div className="space-y-4">
+          <Labelled label={t("to")}>
+            <input
+              type="email"
+              value={to}
+              onChange={(e) => setTo(e.target.value)}
+              className="w-full rounded border border-gray-200 px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-[hsl(var(--ring))]"
+            />
+          </Labelled>
+          <Labelled label={t("subject")}>
+            <input
+              type="text"
+              value={subject}
+              onChange={(e) => setSubject(e.target.value)}
+              className="w-full rounded border border-gray-200 px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-[hsl(var(--ring))]"
+            />
+          </Labelled>
+          <Labelled label={t("body")}>
+            <textarea
+              value={body}
+              onChange={(e) => setBody(e.target.value)}
+              rows={8}
+              className="w-full resize-y rounded border border-gray-200 px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-[hsl(var(--ring))]"
+            />
+          </Labelled>
+
+          <div className="flex items-center gap-3">
+            <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+              <AlertDialogTrigger asChild>
+                <button
+                  type="button"
+                  disabled={sending || to.trim() === ""}
+                  className="rounded-md bg-[hsl(var(--primary))] px-4 py-2 text-sm font-medium text-[hsl(var(--primary-foreground))] transition-colors hover:bg-[hsl(var(--primary)/0.9)] disabled:opacity-50"
+                >
+                  {sending ? t("sending") : isSent ? t("resend") : t("send_quote")}
+                </button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>{t("confirm_title", { number: quoteNumber })}</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    {t("confirm_body", { email: to })}
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>{t("cancel")}</AlertDialogCancel>
+                  <AlertDialogAction onClick={doSend}>
+                    {isSent ? t("resend") : t("send_quote")}
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+
+            {isSent && (
+              <button
+                type="button"
+                onClick={doRevision}
+                className="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50"
+              >
+                {t("revision")}
+              </button>
+            )}
+          </div>
+        </div>
       </aside>
     </div>
   );
 }
 
-function QuoteCompleteCard({
-  rfqNumber,
-  onViewRfq,
-  onRevise,
-}: {
-  rfqNumber: number;
-  onViewRfq: () => void;
-  onRevise: () => void;
-}) {
+function Labelled({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div className="flex h-full items-center justify-center bg-[hsl(210_20%_96%)] p-8">
-      <div className="w-[360px] rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
-        <h2 className="text-lg font-semibold text-gray-900">Quote Complete</h2>
-        {/* "QUOTED" graphic — placeholder until a real asset is supplied */}
-        <div className="relative mt-4 flex h-40 items-center justify-center overflow-hidden rounded-md bg-gradient-to-br from-gray-600 to-gray-900">
-          <span className="select-none text-4xl font-black tracking-[0.2em] text-white/15">
-            QUOTED
-          </span>
-        </div>
-        <p className="mt-4 font-semibold text-gray-900">RFQ {rfqNumber}</p>
-        <div className="mt-4 flex items-center gap-3">
-          <button
-            type="button"
-            onClick={onViewRfq}
-            className="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50"
-          >
-            View RFQ Detail
-          </button>
-          <button
-            type="button"
-            onClick={onRevise}
-            className="rounded-md bg-[#2563EB] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#1d4ed8]"
-          >
-            Revise Quote
-          </button>
-        </div>
-      </div>
-    </div>
+    // biome-ignore lint/a11y/noLabelWithoutControl: the control is the input passed as children
+    <label className="block">
+      <span className="mb-1 block text-xs text-gray-500">{label}</span>
+      {children}
+    </label>
   );
 }

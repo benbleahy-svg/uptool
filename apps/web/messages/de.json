@@ -373,6 +373,17 @@
     "body": "Nachricht",
     "send_quote": "Angebot senden",
     "sent_at": "Gesendet am {date}",
-    "no_quote_to_send": "Kein Angebot zum Senden vorhanden."
+    "no_quote_to_send": "Kein Angebot zum Senden vorhanden.",
+    "sending": "Wird gesendet…",
+    "sent": "Angebot gesendet",
+    "send_failed": "Angebot konnte nicht gesendet werden. Bitte erneut versuchen.",
+    "already_sent_banner": "Dieses Angebot wurde bereits gesendet — Änderungen werden nicht automatisch erneut gesendet.",
+    "resend": "Erneut senden",
+    "revision": "Revision erstellen",
+    "revision_badge": "Revision",
+    "confirm_title": "Angebot #{number} senden?",
+    "confirm_body": "Das Angebots-PDF wird an {email} gesendet.",
+    "cancel": "Abbrechen",
+    "dismiss": "Schließen"
   }
 }

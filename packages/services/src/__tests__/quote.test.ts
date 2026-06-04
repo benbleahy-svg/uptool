@@ -1,13 +1,18 @@
 import { db, parts } from "@uptool/db";
 import { eq } from "drizzle-orm";
-import { afterEach, describe, expect, test } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
 import { NotFoundError, ValidationError, quoteService } from "../index";
 import { createOrg, createRfqWithPart, dropOrg } from "./helpers/fixtures";
+
+// Mock the Resend SDK (dynamic-imported inside quoteService.sendQuote).
+const { sendMock } = vi.hoisted(() => ({ sendMock: vi.fn() }));
+vi.mock("resend", () => ({ Resend: vi.fn(() => ({ emails: { send: sendMock } })) }));
 
 const createdOrgs: string[] = [];
 
 afterEach(async () => {
   for (const id of createdOrgs.splice(0)) await dropOrg(id);
+  sendMock.mockReset();
 });
 
 /** Org (+rfq+part) registered for teardown. */
@@ -31,6 +36,22 @@ function readRfqStatus(id: string) {
   return db.query.rfqs
     .findFirst({ where: (r, { eq: e }) => e(r.id, id), columns: { status: true } })
     .then((r) => r?.status);
+}
+
+function readQuote(id: string) {
+  return db.query.quotes.findFirst({ where: (q, { eq: e }) => e(q.id, id) });
+}
+
+/** Create a draft quote (one tier) and return the current quote's id/number. */
+async function seedQuote(orgId: string, rfqId: string, partId: string) {
+  await quoteService.addQuoteLineItem(orgId, rfqId, {
+    partId,
+    quantity: 1,
+    costPerUnitCents: 5000,
+    markupPct: 20,
+  });
+  const current = must(await quoteService.getCurrentQuote(orgId, rfqId));
+  return { quoteId: current.id, quoteNumber: current.quoteNumber };
 }
 
 describe("addQuoteLineItem + money math", () => {
@@ -371,5 +392,86 @@ describe("updateQuoteNotes", () => {
     const again = await quoteService.findByRfq(orgId, rfqId);
     expect(again).toHaveLength(1);
     expect(again[0]?.notesForCustomer).toBe("Updated note");
+  });
+});
+
+describe("sendQuote", () => {
+  test("emails via Resend, marks quote sent + rfq sent + sentAt", async () => {
+    sendMock.mockResolvedValue({ data: { id: "email-1" }, error: null });
+    const { orgId, rfqId, partId } = await setup();
+    const { quoteId } = await seedQuote(orgId, rfqId, partId);
+
+    await quoteService.sendQuote(orgId, rfqId, {
+      to: "customer@acme.test",
+      subject: "Angebot #1",
+      body: "Im Anhang.",
+      pdfBase64: "QUJD",
+    });
+
+    expect(sendMock).toHaveBeenCalledTimes(1);
+    const payload = sendMock.mock.calls[0]?.[0];
+    expect(payload.to).toEqual(["customer@acme.test"]);
+    expect(payload.attachments[0].filename).toBe("Quote-1.pdf");
+    expect(payload.attachments[0].content).toBe("QUJD");
+
+    const q = must(await readQuote(quoteId));
+    expect(q.status).toBe("sent");
+    expect(q.sentAt).not.toBeNull();
+    expect(await readRfqStatus(rfqId)).toBe("sent");
+  });
+
+  test("Resend failure → throws, DB unchanged", async () => {
+    sendMock.mockResolvedValue({ data: null, error: { message: "boom" } });
+    const { orgId, rfqId, partId } = await setup();
+    const { quoteId } = await seedQuote(orgId, rfqId, partId);
+    const rfqStatusBefore = await readRfqStatus(rfqId);
+
+    await expect(
+      quoteService.sendQuote(orgId, rfqId, {
+        to: "customer@acme.test",
+        subject: "Q",
+        body: "x",
+        pdfBase64: "QUJD",
+      }),
+    ).rejects.toThrow();
+
+    const q = must(await readQuote(quoteId));
+    expect(q.status).toBe("draft"); // unchanged
+    expect(q.sentAt).toBeNull();
+    expect(await readRfqStatus(rfqId)).toBe(rfqStatusBefore);
+  });
+});
+
+describe("createQuoteRevision", () => {
+  test("new draft + new number, line items copied, rfq → quoted", async () => {
+    sendMock.mockResolvedValue({ data: { id: "email-1" }, error: null });
+    const { orgId, rfqId, partId } = await setup();
+    const { quoteId, quoteNumber } = await seedQuote(orgId, rfqId, partId);
+    await quoteService.sendQuote(orgId, rfqId, {
+      to: "customer@acme.test",
+      subject: "Q",
+      body: "x",
+      pdfBase64: "QUJD",
+    });
+
+    const draft = await quoteService.createQuoteRevision(orgId, rfqId);
+
+    expect(draft.id).not.toBe(quoteId);
+    expect(draft.quoteNumber).toBe(quoteNumber + 1);
+    expect(draft.status).toBe("draft");
+    expect(await readRfqStatus(rfqId)).toBe("quoted");
+
+    // The current quote is now the revision draft, with the copied line.
+    const items = await quoteService.listQuoteLineItems(orgId, rfqId);
+    expect(items).toHaveLength(1);
+    expect(items[0]?.costPerUnitCents).toBe(5000);
+  });
+
+  test("throws when there is no sent quote to revise", async () => {
+    const { orgId, rfqId, partId } = await setup();
+    await seedQuote(orgId, rfqId, partId); // draft only, never sent
+    await expect(quoteService.createQuoteRevision(orgId, rfqId)).rejects.toBeInstanceOf(
+      NotFoundError,
+    );
   });
 });

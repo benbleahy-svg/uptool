@@ -1,159 +1,57 @@
-import type { DocInfo, DocRecipient, DocTemplateSpec } from "@/lib/quoting/quote-doc";
 import { resolveRfq } from "@/lib/resolve-rfq";
 import { db } from "@uptool/db";
-import { type LegalForm, quoteTemplateService } from "@uptool/services";
-import { format } from "date-fns";
+import { quoteService } from "@uptool/services";
+import { getTranslations } from "next-intl/server";
 import { notFound } from "next/navigation";
 import { SendView } from "./send-view";
-import { type OriginalEmail, STUB_ORIGINAL_EMAIL } from "./send-stub";
 
 interface Props {
   params: Promise<{ orgSlug: string; rfqId: string }>;
 }
 
-// Minimal defaults when the org hasn't configured a quote template yet.
-function defaultTemplate(companyName: string): DocTemplateSpec {
-  return {
-    slogan: "",
-    companyName,
-    legalForm: "GmbH" as LegalForm,
-    street: "",
-    postalCode: "",
-    city: "",
-    country: "Germany",
-    phone: "",
-    fax: "",
-    email: "",
-    website: "",
-    senderPlace: "",
-    locale: "en-US",
-    currency: "EUR",
-    vatRate: 19,
-    reducedVatRate: 7,
-    smallBusiness: false,
-    subjectTemplate: "Quote No. {quoteNo}",
-    introText: "Dear Sir or Madam,\n\nthank you for your enquiry. We are pleased to offer the following:",
-    closingText: "Kind regards",
-    validityDays: 30,
-    deliveryTerms: "ex works",
-    paymentTerms: "Net 14 days.",
-    termsText: "",
-    contacts: [],
-    managingDirectors: [],
-    registerCourt: "",
-    registerNumber: "",
-    jurisdiction: "",
-    taxNumber: "",
-    vatId: "",
-    bankAccounts: [],
-    logoKey: null,
-    footerLogoKeys: [],
-  };
-}
-
-// Send stage: the quote document is driven entirely by the saved quote_template;
-// recipient/info come from the RFQ. Quote number is the RFQ number for now.
+// Send stage: preview + email the RFQ's current quote. The PDF (preview AND
+// attachment) is the DIN-5008 document rendered from PERSISTED rows by
+// /api/quotes/[id]/pdf. Status transitions live in quoteService.sendQuote.
 export default async function SendPage({ params }: Props) {
   const { orgSlug, rfqId: rfqParam } = await params;
 
   const org = await db.query.orgs.findFirst({ where: (o, { eq }) => eq(o.slug, orgSlug) });
   if (!org) notFound();
-
   const rfq = await resolveRfq(org.id, rfqParam);
   if (!rfq) notFound();
 
-  const row = await quoteTemplateService.get(org.id);
+  const current = await quoteService.getCurrentQuote(org.id, rfq.id);
+  const t = await getTranslations("send");
 
-  const template: DocTemplateSpec = row
-    ? {
-        slogan: row.slogan,
-        companyName: row.companyName || org.name,
-        legalForm: row.legalForm,
-        street: row.street,
-        postalCode: row.postalCode,
-        city: row.city,
-        country: row.country,
-        phone: row.phone,
-        fax: row.fax,
-        email: row.email,
-        website: row.website,
-        senderPlace: row.senderPlace,
-        locale: row.locale,
-        currency: row.currency,
-        vatRate: Number(row.vatRate),
-        reducedVatRate: Number(row.reducedVatRate),
-        smallBusiness: row.smallBusiness,
-        subjectTemplate: row.subjectTemplate,
-        introText: row.introText,
-        closingText: row.closingText,
-        validityDays: row.validityDays,
-        deliveryTerms: row.deliveryTerms,
-        paymentTerms: row.paymentTerms,
-        termsText: row.termsText,
-        contacts: row.contacts,
-        managingDirectors: row.managingDirectors,
-        registerCourt: row.registerCourt,
-        registerNumber: row.registerNumber,
-        jurisdiction: row.jurisdiction,
-        taxNumber: row.taxNumber,
-        vatId: row.vatId,
-        bankAccounts: row.bankAccounts,
-        logoKey: row.logoUrl ?? null,
-        footerLogoKeys: row.footerLogos,
-      }
-    : defaultTemplate(org.name);
-
-  const recipient: DocRecipient = {
-    organization: rfq.customer?.name ?? "—",
-    contactName: rfq.contact?.name ?? "",
-    street: "",
-    postalCode: "",
-    city: "",
-    country: "",
-  };
-
-  const contactName = rfq.contact?.name ?? rfq.contact?.email ?? "—";
-  const info: DocInfo = {
-    customerNo: "",
-    projectNo: String(rfq.rfqNumber),
-    orderedBy: contactName,
-    quoteNo: String(rfq.rfqNumber),
-    dateISO: new Date().toISOString(),
-    deliveryDateISO: null,
-  };
-
-  // Original email (RFQ thread's last message) for the reply composer.
-  const messages = rfq.threads
-    .flatMap((t) => t.messages)
-    .sort((a, b) => a.receivedAt.getTime() - b.receivedAt.getTime());
-  const last = messages.at(-1);
-  let original: OriginalEmail = STUB_ORIGINAL_EMAIL;
-  if (last) {
-    const ourInbox =
-      rfq.emailAccount?.email ??
-      (last.direction === "outbound" ? last.fromEmail : last.toEmails?.[0]) ??
-      "";
-    original = {
-      replyFromEmail: ourInbox,
-      replyFromUnverified: true,
-      dateLabel: format(last.receivedAt, "MMM d, h:mm a"),
-      bodyText: last.bodyText ?? "",
-      attachments: last.attachments.map((a) => a.filename),
-    };
+  if (!current) {
+    return (
+      <div className="grid h-full place-items-center p-8 text-sm text-[hsl(var(--muted-foreground))]">
+        {t("no_quote_to_send")}
+      </div>
+    );
   }
+
+  const defaultBody = [
+    "Sehr geehrte Damen und Herren,",
+    "",
+    `vielen Dank für Ihre Anfrage. Im Anhang finden Sie unser Angebot #${current.quoteNumber}.`,
+    "",
+    "Mit freundlichen Grüßen",
+  ].join("\n");
 
   return (
     <SendView
       orgSlug={orgSlug}
       rfqParam={rfqParam}
       rfqId={rfq.id}
-      rfqNumber={rfq.rfqNumber}
-      template={template}
-      recipient={recipient}
-      info={info}
-      customerEmail={rfq.contact?.email ?? "—"}
-      contactName={contactName}
-      original={original}
+      quoteId={current.id}
+      quoteNumber={current.quoteNumber}
+      status={current.status}
+      sentAtISO={current.sentAt ? current.sentAt.toISOString() : null}
+      hasSentQuote={current.hasSentQuote}
+      defaultTo={rfq.contact?.email ?? ""}
+      defaultSubject={`Angebot #${current.quoteNumber}${rfq.subject ? ` — ${rfq.subject}` : ""}`}
+      defaultBody={defaultBody}
     />
   );
 }

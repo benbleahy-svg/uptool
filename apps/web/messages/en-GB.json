@@ -373,6 +373,17 @@
     "body": "Message",
     "send_quote": "Send quote",
     "sent_at": "Sent on {date}",
-    "no_quote_to_send": "No quote to send."
+    "no_quote_to_send": "No quote to send.",
+    "sending": "Sending…",
+    "sent": "Quote sent",
+    "send_failed": "Couldn't send the quote. Please try again.",
+    "already_sent_banner": "This quote has already been sent — changes will not be automatically re-sent.",
+    "resend": "Re-send",
+    "revision": "Create revision",
+    "revision_badge": "Revision",
+    "confirm_title": "Send Quote #{number}?",
+    "confirm_body": "This will email the quote PDF to {email}.",
+    "cancel": "Cancel",
+    "dismiss": "Dismiss"
   }
 }

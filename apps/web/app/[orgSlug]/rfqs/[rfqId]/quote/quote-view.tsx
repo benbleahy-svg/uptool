@@ -67,6 +67,7 @@ export function QuoteView({
   parts,
   initialLines,
   initialQuoteNote,
+  quoteSent = false,
 }: {
   customer?: Customer;
   orgSlug?: string;
@@ -76,10 +77,13 @@ export function QuoteView({
   parts: QuotePartMeta[];
   initialLines: QuoteLine[];
   initialQuoteNote: string;
+  quoteSent?: boolean;
 }) {
   const router = useRouter();
   const t = useTranslations("quote");
+  const tSend = useTranslations("send");
   const { saving, schedule, runNow } = useRecordSync(t("save_failed"));
+  const [sentBannerDismissed, setSentBannerDismissed] = React.useState(false);
 
   // Persistence context — present in real use; absent only if the page couldn't
   // resolve the RFQ (then the builder is read-only).
@@ -473,6 +477,19 @@ export function QuoteView({
         <div className="flex flex-1 overflow-auto">
           {/* Main column */}
           <div className="min-w-0 flex-1 p-6">
+            {quoteSent && !sentBannerDismissed && (
+              <div className="mb-4 flex items-start justify-between gap-3 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                <span>{tSend("already_sent_banner")}</span>
+                <button
+                  type="button"
+                  onClick={() => setSentBannerDismissed(true)}
+                  aria-label={tSend("dismiss")}
+                  className="shrink-0 text-amber-500 transition-colors hover:text-amber-700"
+                >
+                  ✕
+                </button>
+              </div>
+            )}
             <div className="mb-4 flex items-center justify-between gap-4">
               <div className="flex items-center gap-3">
                 <h1 className="text-2xl font-bold text-gray-900">{t("title")}</h1>

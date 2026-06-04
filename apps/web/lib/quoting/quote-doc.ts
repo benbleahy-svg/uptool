@@ -87,6 +87,53 @@ export function positionsFromSnapshot(snapshot: QuoteSnapshot): DocPosition[] {
   }));
 }
 
+/** Persisted quote_line_items (+ its part) reshaped for positionsFromLineItems. */
+export interface LineItemForDoc {
+  partId: string | null;
+  partNumber: string | null;
+  revision: string | null;
+  description: string | null;
+  notesExternal: string | null;
+  quantity: number;
+  leadTimeWeeks: number | null;
+  unitPriceCents: number;
+  totalPriceCents: number;
+}
+
+/** Group persisted line items by part (first-seen order) into DIN doc positions.
+ *  Prices are cents → euros; lead time formats weeks. The server send path uses
+ *  this instead of positionsFromSnapshot — one source of truth (persisted rows). */
+export function positionsFromLineItems(items: LineItemForDoc[]): DocPosition[] {
+  const positions: DocPosition[] = [];
+  const indexByPart = new Map<string, number>();
+  for (const it of items) {
+    const key = it.partId ?? `n:${it.partNumber ?? ""}`;
+    let idx = indexByPart.get(key);
+    if (idx === undefined) {
+      idx = positions.length;
+      indexByPart.set(key, idx);
+      positions.push({
+        partNumber: it.partNumber ?? "—",
+        revision: it.revision ?? "",
+        description: it.description ?? "",
+        note: it.notesExternal ?? "",
+        rows: [],
+      });
+    }
+    positions[idx]?.rows.push({
+      quantity: it.quantity,
+      unit: "",
+      leadTime:
+        it.leadTimeWeeks == null
+          ? ""
+          : `${it.leadTimeWeeks} ${it.leadTimeWeeks === 1 ? "week" : "weeks"}`,
+      unitPrice: it.unitPriceCents / 100,
+      totalPrice: it.totalPriceCents / 100,
+    });
+  }
+  return positions;
+}
+
 export interface DocTotals {
   net: number;
   vat: number;

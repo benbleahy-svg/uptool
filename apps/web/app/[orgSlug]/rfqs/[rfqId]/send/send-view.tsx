@@ -1,11 +1,9 @@
 "use client";
 
-// Client boundary for the Send page. SendClient owns @react-pdf/renderer (usePDF)
-// and is browser-only, so it's loaded with ssr:false — like the estimate viewers.
+// Client boundary for the Send page. SendClient renders the PDF preview with
+// pdf.js (react-pdf), browser-only → ssr:false (like the estimate viewers).
 
-import type { DocInfo, DocRecipient, DocTemplateSpec } from "@/lib/quoting/quote-doc";
 import dynamic from "next/dynamic";
-import type { OriginalEmail } from "./send-stub";
 
 const SendClient = dynamic(() => import("./send-client").then((m) => m.SendClient), {
   ssr: false,
@@ -16,19 +14,20 @@ const SendClient = dynamic(() => import("./send-client").then((m) => m.SendClien
   ),
 });
 
-interface Props {
+export interface SendViewProps {
   orgSlug: string;
   rfqParam: string;
   rfqId: string;
-  rfqNumber: number;
-  template: DocTemplateSpec;
-  recipient: DocRecipient;
-  info: DocInfo;
-  customerEmail: string;
-  contactName: string;
-  original: OriginalEmail;
+  quoteId: string;
+  quoteNumber: number;
+  status: string;
+  sentAtISO: string | null;
+  hasSentQuote: boolean;
+  defaultTo: string;
+  defaultSubject: string;
+  defaultBody: string;
 }
 
-export function SendView(props: Props) {
+export function SendView(props: SendViewProps) {
   return <SendClient {...props} />;
 }

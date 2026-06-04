@@ -9,6 +9,7 @@ import {
 import { and, asc, eq, gt, sql } from "drizzle-orm";
 import { NotFoundError, ValidationError } from "./estimate/errors";
 import { partService, DEFAULT_QUANTITY_BREAKS } from "./part";
+import { replyService } from "./reply";
 import {
   type AddQuoteLineItemInput,
   type UpdateQuoteLineItemInput,
@@ -76,18 +77,29 @@ async function assertPartInRfq(tx: Tx, orgId: string, rfqId: string, partId: str
 /** The single draft quote for an RFQ; created lazily (one-draft-per-RFQ, mirroring
  *  createOrUpdate) with a fresh quoteNumber from orgs.quote_counter. Validates the
  *  RFQ belongs to the org before creating. Does NOT change rfqs.status. */
-async function ensureDraftQuote(
+async function ensureCurrentQuote(
   tx: Tx,
   orgId: string,
   rfqId: string,
   userId?: string,
 ): Promise<string> {
-  const existing = await tx.query.quotes.findFirst({
+  // The RFQ's working quote: an open draft if one exists; otherwise the latest
+  // existing quote (e.g. an already-sent one — editable in place, with a warning
+  // banner; re-send keeps its number). Only create a fresh draft when the RFQ has
+  // no quote at all. createQuoteRevision is the explicit "new number" fork.
+  const draft = await tx.query.quotes.findFirst({
     where: (q, { and: a, eq: e }) =>
       a(e(q.orgId, orgId), e(q.rfqId, rfqId), e(q.status, "draft")),
     columns: { id: true },
   });
-  if (existing) return existing.id;
+  if (draft) return draft.id;
+
+  const latest = await tx.query.quotes.findFirst({
+    where: (q, { and: a, eq: e }) => a(e(q.orgId, orgId), e(q.rfqId, rfqId)),
+    orderBy: (q, { desc }) => [desc(q.createdAt)],
+    columns: { id: true },
+  });
+  if (latest) return latest.id;
 
   const rfq = await tx.query.rfqs.findFirst({
     where: (r, { and: a, eq: e }) => a(e(r.id, rfqId), e(r.orgId, orgId)),
@@ -107,7 +119,7 @@ async function ensureDraftQuote(
     .insert(quotes)
     .values({ orgId, rfqId, quoteNumber, createdByUserId: userId ?? null })
     .returning({ id: quotes.id });
-  if (!quote) throw new Error("Failed to create draft quote");
+  if (!quote) throw new Error("Failed to create quote");
   return quote.id;
 }
 
@@ -236,6 +248,129 @@ export const quoteService = {
     }
   },
 
+  /**
+   * Send the RFQ's current quote: email the PDF via Resend, then mark it sent.
+   * The PDF bytes are rendered by the caller (apps/web — React-PDF can't run in
+   * services) and passed as base64. Order matters: send FIRST, then persist. If
+   * Resend fails, nothing in the DB changed (caller may retry). If the DB write
+   * fails AFTER a successful send, log the inconsistency rather than throw (the
+   * email is already out; throwing would mislead the caller into re-sending).
+   * Handles first-send AND re-send (idempotent: status→sent, sentAt→now()).
+   */
+  async sendQuote(
+    orgId: string,
+    rfqId: string,
+    input: { to: string; subject: string; body: string; pdfBase64: string; userId?: string },
+  ): Promise<void> {
+    // The same quote the send page shows + whose PDF the caller attached.
+    const quote = await this.getCurrentQuote(orgId, rfqId);
+    if (!quote) throw new NotFoundError("No quote to send");
+
+    const from = await replyService.resolveFromEmail(orgId);
+    let cc: string[] | undefined;
+    const uid = input.userId;
+    if (uid) {
+      const user = await db.query.users.findFirst({
+        where: (u, { eq: e }) => e(u.id, uid),
+        columns: { email: true },
+      });
+      if (user?.email && user.email !== input.to) cc = [user.email];
+    }
+
+    const { Resend } = await import("resend");
+    const resend = new Resend(process.env.RESEND_API_KEY);
+    const result = await resend.emails.send({
+      from,
+      to: [input.to],
+      cc,
+      subject: input.subject,
+      text: input.body,
+      attachments: [{ filename: `Quote-${quote.quoteNumber}.pdf`, content: input.pdfBase64 }],
+    });
+    if (result.error) throw new Error(`Resend failed: ${result.error.message}`);
+
+    try {
+      await withOrgContext(orgId, async (tx) => {
+        await tx
+          .update(quotes)
+          .set({ status: "sent", sentAt: new Date() })
+          .where(eq(quotes.id, quote.id));
+        await tx
+          .update(rfqs)
+          .set({ status: "sent", updatedAt: new Date() })
+          .where(and(eq(rfqs.id, rfqId), eq(rfqs.orgId, orgId)));
+      });
+    } catch (err) {
+      console.error(
+        `[quoteService.sendQuote] email sent for quote ${quote.id} but status update failed`,
+        err,
+      );
+    }
+  },
+
+  /**
+   * Start a revision: a NEW draft quote (fresh number) seeded with the latest
+   * sent quote's line items + notes; the RFQ drops to 'quoted' until the revision
+   * is sent. Returns the new draft. Throws if there's no sent quote to revise.
+   */
+  async createQuoteRevision(orgId: string, rfqId: string, userId?: string) {
+    return withOrgContext(orgId, async (tx) => {
+      const source = await tx.query.quotes.findFirst({
+        where: (q, { and: a, eq: e }) =>
+          a(e(q.orgId, orgId), e(q.rfqId, rfqId), e(q.status, "sent")),
+        orderBy: (q, { desc }) => [desc(q.createdAt)],
+        with: { lineItems: { orderBy: (li, { asc }) => [asc(li.sortOrder)] } },
+      });
+      if (!source) throw new NotFoundError("No sent quote to revise");
+
+      const [updated] = await tx
+        .update(orgs)
+        .set({ quoteCounter: sql`quote_counter + 1` })
+        .where(eq(orgs.id, orgId))
+        .returning({ quoteCounter: orgs.quoteCounter });
+      const quoteNumber = updated?.quoteCounter;
+      if (!quoteNumber) throw new NotFoundError("Org not found");
+
+      const [draft] = await tx
+        .insert(quotes)
+        .values({
+          orgId,
+          rfqId,
+          quoteNumber,
+          createdByUserId: userId ?? null,
+          notesForCustomer: source.notesForCustomer,
+        })
+        .returning();
+      if (!draft) throw new Error("Failed to create revision");
+
+      if (source.lineItems.length > 0) {
+        await tx.insert(quoteLineItems).values(
+          source.lineItems.map((li) => ({
+            orgId,
+            quoteId: draft.id,
+            partId: li.partId,
+            quantity: li.quantity,
+            costPerUnitCents: li.costPerUnitCents,
+            markupPct: li.markupPct,
+            quoteUnitPriceCents: li.quoteUnitPriceCents,
+            quoteTotalCents: li.quoteTotalCents,
+            leadTimeWeeks: li.leadTimeWeeks,
+            tierLabel: li.tierLabel,
+            sortOrder: li.sortOrder,
+            isNoBid: li.isNoBid,
+          })),
+        );
+      }
+
+      await tx
+        .update(rfqs)
+        .set({ status: "quoted", updatedAt: new Date() })
+        .where(and(eq(rfqs.id, rfqId), eq(rfqs.orgId, orgId)));
+
+      return draft;
+    });
+  },
+
   async buildLineItemsFromParts(orgId: string, rfqId: string) {
     const partsWithOps = await partService.findByRfq(orgId, rfqId);
     const lineItems: CreateQuoteInput["lineItems"] = [];
@@ -266,19 +401,32 @@ export const quoteService = {
 
   // ─── Line-item tier mutations (operate on the single draft quote per RFQ) ─────
 
-  /** A draft quote's line items, ordered by sortOrder. Empty if no draft exists. */
+  /** The CURRENT quote's line items, ordered by sortOrder (draft if one exists,
+   *  else the latest quote — so an already-sent quote stays visible/editable).
+   *  Empty if the RFQ has no quote. */
   async listQuoteLineItems(orgId: string, rfqId: string) {
-    const draft = await db.query.quotes.findFirst({
-      where: (q, { and: a, eq: e }) =>
-        a(e(q.orgId, orgId), e(q.rfqId, rfqId), e(q.status, "draft")),
-      columns: { id: true },
-    });
-    if (!draft) return [];
+    const current = await this.getCurrentQuote(orgId, rfqId);
+    if (!current) return [];
     return db
       .select()
       .from(quoteLineItems)
-      .where(and(eq(quoteLineItems.orgId, orgId), eq(quoteLineItems.quoteId, draft.id)))
+      .where(and(eq(quoteLineItems.orgId, orgId), eq(quoteLineItems.quoteId, current.id)))
       .orderBy(asc(quoteLineItems.sortOrder), asc(quoteLineItems.createdAt));
+  },
+
+  /** The RFQ's current quote (draft preferred, else latest) + whether any sent
+   *  quote exists (drives the "already sent" banner + the Re-send/Revision UI).
+   *  Null if the RFQ has no quote. */
+  async getCurrentQuote(orgId: string, rfqId: string) {
+    const all = await db.query.quotes.findMany({
+      where: (q, { and: a, eq: e }) => a(e(q.orgId, orgId), e(q.rfqId, rfqId)),
+      orderBy: (q, { desc }) => [desc(q.createdAt)],
+      columns: { id: true, quoteNumber: true, status: true, sentAt: true, notesForCustomer: true },
+    });
+    if (all.length === 0) return null;
+    const current = all.find((q) => q.status === "draft") ?? all[0];
+    if (!current) return null;
+    return { ...current, hasSentQuote: all.some((q) => q.status === "sent") };
   },
 
   /** Append a tier row. costPerUnitCents is the frozen snapshot (caller-supplied);
@@ -292,7 +440,7 @@ export const quoteService = {
     const data = parseOrThrow(addQuoteLineItemSchema, input);
     return withOrgContext(orgId, async (tx) => {
       await assertPartInRfq(tx, orgId, rfqId, data.partId);
-      const quoteId = await ensureDraftQuote(tx, orgId, rfqId, userId);
+      const quoteId = await ensureCurrentQuote(tx, orgId, rfqId, userId);
       const sortOrder = await nextLineItemSortOrder(tx, orgId, quoteId);
       const markupPct = data.markupPct ?? 0;
       const { quoteUnitPriceCents, quoteTotalCents } = linePricing(
@@ -450,7 +598,7 @@ export const quoteService = {
   ): Promise<void> {
     const notes = parseOrThrow(quoteNotesSchema, notesForCustomer);
     await withOrgContext(orgId, async (tx) => {
-      const quoteId = await ensureDraftQuote(tx, orgId, rfqId, userId);
+      const quoteId = await ensureCurrentQuote(tx, orgId, rfqId, userId);
       await tx.update(quotes).set({ notesForCustomer: notes }).where(eq(quotes.id, quoteId));
     });
   },

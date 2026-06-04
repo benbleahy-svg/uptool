@@ -29,20 +29,17 @@ export default async function QuotePage({ params }: Props) {
   let parts: QuotePartMeta[] = [];
   let initialLines: QuoteLine[] = [];
   let initialQuoteNote = "";
+  let quoteSent = false;
 
   if (org && rfq) {
     const quantityBreaks = rfq.quantityBreaks?.length
       ? rfq.quantityBreaks
       : DEFAULT_QUANTITY_BREAKS;
 
-    const [partRows, lineRows, draft] = await Promise.all([
+    const [partRows, lineRows, current] = await Promise.all([
       partService.findByRfq(org.id, rfq.id),
       quoteService.listQuoteLineItems(org.id, rfq.id),
-      db.query.quotes.findFirst({
-        where: (q, { and, eq }) =>
-          and(eq(q.orgId, org.id), eq(q.rfqId, rfq.id), eq(q.status, "draft")),
-        columns: { notesForCustomer: true },
-      }),
+      quoteService.getCurrentQuote(org.id, rfq.id),
     ]);
 
     // Rich per-qty estimate cost (matches what the calculator shows) is the
@@ -65,7 +62,8 @@ export default async function QuotePage({ params }: Props) {
     }));
 
     initialLines = lineRows.map(rowToLine);
-    initialQuoteNote = draft?.notesForCustomer ?? "";
+    initialQuoteNote = current?.notesForCustomer ?? "";
+    quoteSent = current?.status === "sent";
   }
 
   return (
@@ -78,6 +76,7 @@ export default async function QuotePage({ params }: Props) {
       parts={parts}
       initialLines={initialLines}
       initialQuoteNote={initialQuoteNote}
+      quoteSent={quoteSent}
     />
   );
 }
