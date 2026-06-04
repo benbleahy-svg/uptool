@@ -67,5 +67,12 @@ jobs:
           echo "Services layer clean — no forbidden imports found"
 
       - name: Check Drizzle migrations up to date
-        run: pnpm --filter @uptool/db db:generate --check
-        continue-on-error: true
+        run: |
+          pnpm --filter @uptool/db db:generate
+          if [ -n "$(git status --porcelain packages/db/migrations)" ]; then
+            echo "::error::Schema drift: schema.ts has changes with no matching migration. Run 'pnpm --filter @uptool/db db:generate' and commit the result."
+            git status --porcelain packages/db/migrations
+            git --no-pager diff -- packages/db/migrations
+            exit 1
+          fi
+          echo "Drizzle migrations up to date — no drift"
