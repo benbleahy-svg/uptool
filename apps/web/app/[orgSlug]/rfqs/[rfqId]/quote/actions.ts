@@ -3,7 +3,11 @@
 import { revalidatePath } from "next/cache";
 import { db } from "@uptool/db";
 import { requireAuth } from "@/lib/auth";
-import { quoteService } from "@uptool/services";
+import {
+  type AddQuoteLineItemInput,
+  type UpdateQuoteLineItemInput,
+  quoteService,
+} from "@uptool/services";
 
 async function getOrgId(orgSlug: string, userId: string): Promise<string> {
   const org = await db.query.orgs.findFirst({
@@ -100,4 +104,112 @@ export async function sendQuote(formData: FormData) {
 
   await quoteService.markSent(orgId, quoteId);
   revalidatePath(`/${orgSlug}/rfqs/${rfqId}/quote/send`);
+}
+
+// ─── Quote line-item tier actions (prompt 2) ─────────────────────────────────
+// Typed-arg RPC actions returning { ok, data } | { ok, error } — the same
+// contract as the estimate epic. Replicated here (not imported) because that
+// file's run/ActionResult are internal to a "use server" module. prompt 3 wires
+// these to the quote UI; the page still renders from mock until then.
+
+type ActionResult<T> = { ok: true; data: T } | { ok: false; error: string };
+
+async function run<T>(
+  orgSlug: string,
+  fn: (orgId: string, userId: string) => Promise<T>,
+  revalidate?: () => void,
+): Promise<ActionResult<T>> {
+  const { userId } = await requireAuth();
+  try {
+    const orgId = await getOrgId(orgSlug, userId);
+    const data = await fn(orgId, userId);
+    revalidate?.();
+    return { ok: true, data };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Unexpected error" };
+  }
+}
+
+function revalidateQuote(orgSlug: string, rfqParam: string) {
+  revalidatePath(`/${orgSlug}/rfqs/${rfqParam}/quote`, "layout");
+}
+
+export async function listQuoteLineItemsAction(i: { orgSlug: string; rfqId: string }) {
+  return run(i.orgSlug, (orgId) => quoteService.listQuoteLineItems(orgId, i.rfqId));
+}
+
+export async function addQuoteLineItemAction(i: {
+  orgSlug: string;
+  rfqParam: string;
+  rfqId: string;
+  input: AddQuoteLineItemInput;
+}) {
+  return run(
+    i.orgSlug,
+    (orgId, userId) => quoteService.addQuoteLineItem(orgId, i.rfqId, i.input, userId),
+    () => revalidateQuote(i.orgSlug, i.rfqParam),
+  );
+}
+
+export async function duplicateQuoteLineItemAction(i: {
+  orgSlug: string;
+  rfqParam: string;
+  lineItemId: string;
+}) {
+  return run(
+    i.orgSlug,
+    (orgId) => quoteService.duplicateQuoteLineItem(orgId, i.lineItemId),
+    () => revalidateQuote(i.orgSlug, i.rfqParam),
+  );
+}
+
+export async function updateQuoteLineItemAction(i: {
+  orgSlug: string;
+  rfqParam: string;
+  lineItemId: string;
+  patch: UpdateQuoteLineItemInput;
+}) {
+  return run(
+    i.orgSlug,
+    (orgId) => quoteService.updateQuoteLineItem(orgId, i.lineItemId, i.patch),
+    () => revalidateQuote(i.orgSlug, i.rfqParam),
+  );
+}
+
+export async function deleteQuoteLineItemAction(i: {
+  orgSlug: string;
+  rfqParam: string;
+  lineItemId: string;
+}) {
+  return run(
+    i.orgSlug,
+    (orgId) => quoteService.deleteQuoteLineItem(orgId, i.lineItemId),
+    () => revalidateQuote(i.orgSlug, i.rfqParam),
+  );
+}
+
+export async function reorderQuoteLineItemsAction(i: {
+  orgSlug: string;
+  rfqParam: string;
+  rfqId: string;
+  orderedIds: string[];
+}) {
+  return run(
+    i.orgSlug,
+    (orgId) => quoteService.reorderQuoteLineItems(orgId, i.rfqId, i.orderedIds),
+    () => revalidateQuote(i.orgSlug, i.rfqParam),
+  );
+}
+
+export async function updateQuoteNotesAction(i: {
+  orgSlug: string;
+  rfqParam: string;
+  rfqId: string;
+  notesForCustomer: string;
+}) {
+  return run(
+    i.orgSlug,
+    (orgId, userId) => quoteService.updateQuoteNotes(orgId, i.rfqId, i.notesForCustomer, userId),
+    () => revalidateQuote(i.orgSlug, i.rfqParam),
+  );
 }

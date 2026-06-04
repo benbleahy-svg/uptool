@@ -12,6 +12,7 @@ export { partService, DEFAULT_QUANTITY_BREAKS } from "./part";
 export type { CreatePartInput, CreateOperationInput, CostAtQty } from "./part";
 export { quoteService } from "./quote";
 export type { CreateQuoteInput } from "./quote";
+export type { AddQuoteLineItemInput, UpdateQuoteLineItemInput } from "./quote-schemas";
 export { quoteTemplateService } from "./quote-template";
 export type { QuoteTemplateInput, LegalForm } from "./quote-template";
 export { emailTemplateService, DEFAULT_EMAIL_TEMPLATES } from "./email-template";
