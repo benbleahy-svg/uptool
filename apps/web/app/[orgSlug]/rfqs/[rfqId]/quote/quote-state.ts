@@ -1,79 +1,112 @@
-// Client-side quote state: lines, groups, and the price math. No DB persistence.
+// Client-side quote model + price helpers. Rows mirror the persisted
+// quote_line_items (cents). The page DISPLAYS the server-computed unit/total and
+// only recomputes optimistically between an edit and its save landing. The
+// whole-€ "Round Quote Unit Price" toggle is a display transform (never written).
 
-import { getCostShares } from "@/lib/quoting/estimateResults";
-import type { BreakdownKey } from "@/lib/quoting/estimateTotals";
 import { parseDecimal } from "@/lib/quoting/materialCost";
 import type { QuoteDocItem, QuoteSnapshot } from "@/lib/quoting/quote-store";
-import { DEFAULT_QUOTE_NOTE, QUOTE_PARTS } from "./quote-data";
 
-/** Absolute four-category cost split for a line (sums to its estimate total). */
-export type LineBreakdown = Record<BreakdownKey, number>;
+/** Part metadata for the Items column — from the real RFQ, not a mock. */
+export interface QuotePartMeta {
+  partId: string;
+  partNumber: string;
+  revision: string;
+  description: string;
+  noBid: boolean;
+  /** External note (parts.notes_external — "printed on quote"); editable on the quote. */
+  note: string;
+  /** Server estimate unit cost (cents) per quantity break — snapshot source for new tiers. */
+  estimateByQty: Array<{ quantity: number; costPerUnitCents: number }>;
+}
 
+/** A quote tier row. `id` is the DB id, or a temp id while a create is in flight. */
 export interface QuoteLine {
   id: string;
   partId: string;
   quantity: number;
-  estimateUnitPrice: number;
-  /** Percent as a (comma-tolerant) string; "" means 0%. Negative = discount. */
+  /** Frozen estimate snapshot (cents). */
+  costPerUnitCents: number;
+  /** Markup % input (comma-tolerant); "" → 0; negative = discount. */
   markup: string;
-  leadTime: string;
-  /** Cost split sourced from the estimate computation (see getCostShares). */
-  breakdown: LineBreakdown;
+  leadTimeWeeks: number | null;
+  tierLabel: string | null;
+  /** Server-computed — what we display. */
+  quoteUnitPriceCents: number;
+  quoteTotalCents: number;
+  sortOrder: number;
 }
 
+/** Session-only grouping (Group Total persistence is deferred to its own epic). */
 export interface QuoteGroup {
   id: string;
   name: string;
   lineIds: string[];
 }
 
-/** One priced line per part per quantity break (no-bid parts have none). */
-export function buildInitialLines(): QuoteLine[] {
-  const lines: QuoteLine[] = [];
-  for (const part of QUOTE_PARTS) {
-    if (part.noBid) continue;
-    for (const e of part.estimates) {
-      const estimateTotal = e.unitPrice * e.quantity;
-      const shares = getCostShares(part.partId, e.quantity);
-      lines.push({
-        id: `${part.partId}-${e.quantity}`,
-        partId: part.partId,
-        quantity: e.quantity,
-        estimateUnitPrice: e.unitPrice,
-        markup: "",
-        leadTime: "",
-        breakdown: {
-          materials: shares.materials * estimateTotal,
-          nr: shares.nr * estimateTotal,
-          recurring: shares.recurring * estimateTotal,
-          outside: shares.outside * estimateTotal,
-        },
-      });
-    }
-  }
-  return lines;
-}
-
-/** Quote unit price = estimate × (1 + markup/100), rounded to whole € when enabled. */
-export function quoteUnitPrice(estimate: number, markup: string, round: boolean): number {
-  const raw = estimate * (1 + parseDecimal(markup) / 100);
-  return round ? Math.round(raw) : raw;
-}
-
-export function quoteTotalPrice(
-  estimate: number,
-  markup: string,
-  quantity: number,
-  round: boolean,
-): number {
-  return quoteUnitPrice(estimate, markup, round) * quantity;
-}
-
 /**
- * Snapshots the current quote (lines grouped by part, with computed prices) for
- * the Send page. Carries the applied variant rows and their lead times verbatim.
+ * Optimistic recompute mirroring the server (quoteService.computeQuotePrice):
+ * round(cost × (1 + markup/100)) in cents. Used only between an edit and its save
+ * landing; the server value reconciles in on success.
  */
+export function computeQuoteUnitCents(costPerUnitCents: number, markup: string): number {
+  const pct = markup.trim() === "" ? 0 : parseDecimal(markup);
+  return Math.round(costPerUnitCents * (1 + pct / 100));
+}
+
+/** Whole-€ round toggle — display-only transform on the stored cents (never persisted). */
+export function displayUnitCents(unitCents: number, round: boolean): number {
+  return round ? Math.round(unitCents / 100) * 100 : unitCents;
+}
+
+const TEMP_PREFIX = "tmp-";
+export const isTempId = (id: string) => id.startsWith(TEMP_PREFIX);
+export const newTempId = () => `${TEMP_PREFIX}${crypto.randomUUID()}`;
+
+/** Structural shape of a persisted quote_line_items row (what the server actions
+ *  return). Kept here so both the Server Component (hydration) and the client
+ *  (save-reconcile) map rows the same way without importing server types. */
+export interface QuoteLineRow {
+  id: string;
+  partId: string | null;
+  quantity: number;
+  costPerUnitCents: number;
+  markupPct: string;
+  leadTimeWeeks: number | null;
+  tierLabel: string | null;
+  quoteUnitPriceCents: number | null;
+  quoteTotalCents: number;
+  sortOrder: number;
+}
+
+/** DB row → client line. quoteUnitPriceCents is nullable in the column; fall back
+ *  to the same formula the server uses when a legacy row left it null. */
+export function rowToLine(r: QuoteLineRow): QuoteLine {
+  const markupNum = Number(r.markupPct);
+  return {
+    id: r.id,
+    partId: r.partId ?? "",
+    quantity: r.quantity,
+    costPerUnitCents: r.costPerUnitCents,
+    markup: markupNum === 0 ? "" : String(markupNum),
+    leadTimeWeeks: r.leadTimeWeeks,
+    tierLabel: r.tierLabel,
+    quoteUnitPriceCents:
+      r.quoteUnitPriceCents ?? computeQuoteUnitCents(r.costPerUnitCents, String(markupNum)),
+    quoteTotalCents: r.quoteTotalCents,
+    sortOrder: r.sortOrder,
+  };
+}
+
+// ─── Preview/Send snapshot (client store; the Send epic will source from DB) ────
+
+function leadTimeLabel(weeks: number | null): string {
+  if (weeks == null) return "";
+  return `${weeks} ${weeks === 1 ? "week" : "weeks"}`;
+}
+
+/** Snapshot the current builder state for the Send page's client store. */
 export function buildSnapshot(
+  parts: QuotePartMeta[],
   lines: QuoteLine[],
   notes: Record<string, string>,
   quoteNote: string,
@@ -81,7 +114,7 @@ export function buildSnapshot(
   round: boolean,
 ): QuoteSnapshot {
   const items: QuoteDocItem[] = [];
-  for (const part of QUOTE_PARTS) {
+  for (const part of parts) {
     if (part.noBid) continue;
     const partLines = lines.filter((l) => l.partId === part.partId);
     if (partLines.length === 0) continue;
@@ -90,12 +123,12 @@ export function buildSnapshot(
       partNumber: part.partNumber,
       revision: part.revision,
       description: part.description,
-      note: notes[part.partId] ?? part.defaultNote,
+      note: notes[part.partId] ?? part.note,
       rows: partLines.map((l) => {
-        const unit = quoteUnitPrice(l.estimateUnitPrice, l.markup, round);
+        const unit = displayUnitCents(l.quoteUnitPriceCents, round) / 100;
         return {
           quantity: l.quantity,
-          leadTime: l.leadTime,
+          leadTime: leadTimeLabel(l.leadTimeWeeks),
           unitPrice: unit,
           totalPrice: unit * l.quantity,
         };
@@ -105,7 +138,8 @@ export function buildSnapshot(
   return { quoteNumber, quoteNote, items };
 }
 
-/** Fallback snapshot from the base lines (e.g. /send reached without a saved quote). */
+/** Empty fallback when /send is reached without a client snapshot (Send epic
+ *  will read persisted rows here). */
 export function buildDefaultSnapshot(quoteNumber: number): QuoteSnapshot {
-  return buildSnapshot(buildInitialLines(), {}, DEFAULT_QUOTE_NOTE, quoteNumber, false);
+  return { quoteNumber, quoteNote: "", items: [] };
 }

@@ -6,6 +6,7 @@ import { requireAuth } from "@/lib/auth";
 import {
   type AddQuoteLineItemInput,
   type UpdateQuoteLineItemInput,
+  estimateService,
   quoteService,
 } from "@uptool/services";
 
@@ -210,6 +211,21 @@ export async function updateQuoteNotesAction(i: {
   return run(
     i.orgSlug,
     (orgId, userId) => quoteService.updateQuoteNotes(orgId, i.rfqId, i.notesForCustomer, userId),
+    () => revalidateQuote(i.orgSlug, i.rfqParam),
+  );
+}
+
+// Per-part quote note = the part's external note (parts.notes_external — "printed
+// on quote"). Reuses the estimate service so it stays a single source of truth.
+export async function updateQuotePartNoteAction(i: {
+  orgSlug: string;
+  rfqParam: string;
+  partId: string;
+  note: string;
+}) {
+  return run(
+    i.orgSlug,
+    (orgId) => estimateService.updatePartNotes(orgId, i.partId, { external: i.note }),
     () => revalidateQuote(i.orgSlug, i.rfqParam),
   );
 }

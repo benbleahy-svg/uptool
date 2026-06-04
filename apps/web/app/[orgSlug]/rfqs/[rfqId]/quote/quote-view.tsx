@@ -1,30 +1,33 @@
 "use client";
 
-import { segmentsFromValues } from "@/lib/quoting/estimateTotals";
-import {
-  HoverCard,
-  HoverCardContent,
-  HoverCardTrigger,
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-  cn,
-} from "@uptool/ui";
 import { saveQuoteSnapshot } from "@/lib/quoting/quote-store";
-import { Info, Trash2 } from "lucide-react";
+import { parseDecimal } from "@/lib/quoting/materialCost";
+import { useRecordSync } from "@/lib/use-record-sync";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger, cn } from "@uptool/ui";
+import { ChevronDown, ChevronUp, Copy, Info, Trash2 } from "lucide-react";
+import { useTranslations } from "next-intl";
 import { useRouter } from "next/navigation";
 import * as React from "react";
-import { BreakdownBar } from "../_components/breakdown-bar";
 import { CadThumb } from "../_components/cad-thumb";
-import { DEFAULT_QUOTE_NOTE, QUOTE_CUSTOMER, QUOTE_PARTS } from "./quote-data";
+import {
+  addQuoteLineItemAction,
+  deleteQuoteLineItemAction,
+  duplicateQuoteLineItemAction,
+  reorderQuoteLineItemsAction,
+  updateQuoteLineItemAction,
+  updateQuoteNotesAction,
+  updateQuotePartNoteAction,
+} from "./actions";
 import {
   type QuoteGroup,
   type QuoteLine,
-  buildInitialLines,
+  type QuotePartMeta,
   buildSnapshot,
-  quoteTotalPrice,
-  quoteUnitPrice,
+  computeQuoteUnitCents,
+  displayUnitCents,
+  isTempId,
+  newTempId,
+  rowToLine,
 } from "./quote-state";
 
 interface BulkOption {
@@ -33,39 +36,68 @@ interface BulkOption {
   markup: string;
 }
 
-// German currency formatting with a fixed 2 decimal places (e.g. 1.234,70 €).
-const money = (n: number) =>
-  `${n.toLocaleString("de-DE", {
+interface Customer {
+  contact: string;
+  organization: string;
+}
+
+// German currency formatting from cents (e.g. 1.234,70 €).
+const money = (cents: number) =>
+  `${(cents / 100).toLocaleString("de-DE", {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   })} €`;
 
+const parseMarkupNum = (s: string) => (s.trim() === "" ? 0 : parseDecimal(s));
+const parseWeeks = (s: string): number | null => {
+  if (s.trim() === "") return null;
+  const n = Math.round(parseDecimal(s));
+  return Number.isFinite(n) && n >= 0 ? n : null;
+};
+
+/** Re-price a line from its frozen cost + current markup (optimistic, mirrors server). */
+function priced(line: QuoteLine): QuoteLine {
+  const unit = computeQuoteUnitCents(line.costPerUnitCents, line.markup);
+  return { ...line, quoteUnitPriceCents: unit, quoteTotalCents: unit * line.quantity };
+}
+
 export function QuoteView({
-  customer = QUOTE_CUSTOMER,
+  customer,
   orgSlug,
   rfqParam,
   rfqId,
   rfqNumber,
+  parts,
+  initialLines,
+  initialQuoteNote,
 }: {
-  customer?: typeof QUOTE_CUSTOMER;
+  customer?: Customer;
   orgSlug?: string;
   rfqParam?: string;
   rfqId?: string;
   rfqNumber?: number;
+  parts: QuotePartMeta[];
+  initialLines: QuoteLine[];
+  initialQuoteNote: string;
 }) {
   const router = useRouter();
-  const [lines, setLines] = React.useState<QuoteLine[]>(buildInitialLines);
-  const [selected, setSelected] = React.useState<Set<string>>(new Set());
+  const t = useTranslations("quote");
+  const { saving, schedule, runNow } = useRecordSync(t("save_failed"));
+
+  // Persistence context — present in real use; absent only if the page couldn't
+  // resolve the RFQ (then the builder is read-only).
+  const ctx = orgSlug && rfqParam && rfqId ? { orgSlug, rfqParam, rfqId } : null;
+
+  const [lines, setLines] = React.useState<QuoteLine[]>(initialLines);
   const [notes, setNotes] = React.useState<Record<string, string>>(() =>
-    Object.fromEntries(QUOTE_PARTS.map((p) => [p.partId, p.defaultNote])),
+    Object.fromEntries(parts.map((p) => [p.partId, p.note])),
   );
+  const [quoteNote, setQuoteNote] = React.useState(initialQuoteNote);
   const [editingNote, setEditingNote] = React.useState<string | null>(null);
-  const [quoteNote, setQuoteNote] = React.useState(DEFAULT_QUOTE_NOTE);
+  const [selected, setSelected] = React.useState<Set<string>>(new Set());
   const [showNoBid, setShowNoBid] = React.useState(false);
   const [showMarkup, setShowMarkup] = React.useState(false);
   const [roundUnit, setRoundUnit] = React.useState(false);
-  // Bulk-action panel (right sidebar): one or more {leadTime, markup} options.
-  // Applying duplicates each selected line into one row per option (see 17.4).
   const [bulkOptions, setBulkOptions] = React.useState<BulkOption[]>(() => [
     { id: "opt-base", leadTime: "", markup: "" },
   ]);
@@ -73,43 +105,295 @@ export function QuoteView({
   const optionSeq = React.useRef(0);
   const [groups, setGroups] = React.useState<QuoteGroup[]>([]);
   const [groupName, setGroupName] = React.useState("Group 1");
-  const [toast, setToast] = React.useState<string | null>(null);
-  const toastTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const visibleParts = QUOTE_PARTS.filter((p) => showNoBid || !p.noBid);
+  const visibleParts = parts.filter((p) => showNoBid || !p.noBid);
   const allSelected = lines.length > 0 && lines.every((l) => selected.has(l.id));
-
-  // Selected-totals summary (only the chosen subset is ever meaningful).
   const selectedLines = lines.filter((l) => selected.has(l.id));
-  // The bulk panel replaces Customer Info at the top of the sidebar while a
-  // selection exists and markup is shown, until the user applies/cancels it.
   const bulkOpen = showMarkup && selectedLines.length > 0 && !bulkDismissed;
-  const selEstimateTotal = selectedLines.reduce((s, l) => s + l.estimateUnitPrice * l.quantity, 0);
-  const selQuoteTotal = selectedLines.reduce(
-    (s, l) => s + quoteUnitPrice(l.estimateUnitPrice, l.markup, roundUnit) * l.quantity,
-    0,
-  );
-  const selBreakdown = selectedLines.reduce(
-    (acc, l) => ({
-      materials: acc.materials + l.breakdown.materials,
-      nr: acc.nr + l.breakdown.nr,
-      recurring: acc.recurring + l.breakdown.recurring,
-      outside: acc.outside + l.breakdown.outside,
-    }),
-    { materials: 0, nr: 0, recurring: 0, outside: 0 },
-  );
 
-  function updateLine(id: string, patch: Partial<QuoteLine>) {
-    setLines((prev) => prev.map((l) => (l.id === id ? { ...l, ...patch } : l)));
+  const dispUnit = (l: QuoteLine) => displayUnitCents(l.quoteUnitPriceCents, roundUnit);
+  const dispTotal = (l: QuoteLine) => dispUnit(l) * l.quantity;
+
+  const selEstimateTotal = selectedLines.reduce((s, l) => s + l.costPerUnitCents * l.quantity, 0);
+  const selQuoteTotal = selectedLines.reduce((s, l) => s + dispTotal(l), 0);
+
+  // ─── Field edits (debounced; optimistic, no success-reconcile to avoid
+  //     clobbering newer keystrokes — server price matches the optimistic one) ──
+  function editLine(
+    lineId: string,
+    patch: Partial<Pick<QuoteLine, "markup" | "quantity" | "leadTimeWeeks" | "tierLabel">>,
+    field: string,
+  ) {
+    const before = lines.find((l) => l.id === lineId);
+    if (!before) return;
+    setLines((cur) =>
+      cur.map((l) => {
+        if (l.id !== lineId) return l;
+        const next = { ...l, ...patch };
+        return patch.markup !== undefined || patch.quantity !== undefined ? priced(next) : next;
+      }),
+    );
+    if (!ctx || isTempId(lineId)) return; // temp row: its create carries the values
+    const serverPatch: Record<string, unknown> = {};
+    if (patch.markup !== undefined) serverPatch.markupPct = parseMarkupNum(patch.markup);
+    if (patch.quantity !== undefined) serverPatch.quantity = patch.quantity;
+    if (patch.leadTimeWeeks !== undefined) serverPatch.leadTimeWeeks = patch.leadTimeWeeks;
+    if (patch.tierLabel !== undefined) serverPatch.tierLabel = patch.tierLabel;
+    schedule(
+      `${lineId}:${field}`,
+      () =>
+        updateQuoteLineItemAction({
+          orgSlug: ctx.orgSlug,
+          rfqParam: ctx.rfqParam,
+          lineItemId: lineId,
+          patch: serverPatch,
+        }),
+      () => setLines((cur) => cur.map((l) => (l.id === lineId ? before : l))),
+    );
   }
-  function deleteLine(id: string) {
-    setLines((prev) => prev.filter((l) => l.id !== id));
-    setSelected((prev) => {
-      const next = new Set(prev);
-      next.delete(id);
+
+  // ─── Structure changes (immediate; optimistic; reconcile temp→real on success) ─
+  function addTier(part: QuotePartMeta, quantity: number, costPerUnitCents: number) {
+    if (!ctx) return;
+    const tmp = newTempId();
+    const optimistic = priced({
+      id: tmp,
+      partId: part.partId,
+      quantity,
+      costPerUnitCents,
+      markup: "",
+      leadTimeWeeks: null,
+      tierLabel: null,
+      quoteUnitPriceCents: 0,
+      quoteTotalCents: 0,
+      sortOrder: lines.length,
+    });
+    setLines((cur) => [...cur, optimistic]);
+    runNow(async () => {
+      const res = await addQuoteLineItemAction({
+        orgSlug: ctx.orgSlug,
+        rfqParam: ctx.rfqParam,
+        rfqId: ctx.rfqId,
+        input: { partId: part.partId, quantity, costPerUnitCents, markupPct: 0 },
+      });
+      if (res.ok) setLines((cur) => cur.map((l) => (l.id === tmp ? rowToLine(res.data) : l)));
+      return res;
+    }, () => setLines((cur) => cur.filter((l) => l.id !== tmp)));
+  }
+
+  function generateFromEstimate() {
+    if (!ctx) return;
+    const seeds = parts
+      .filter((p) => !p.noBid)
+      .flatMap((p) => p.estimateByQty.map((e) => ({ part: p, e, tmp: newTempId() })));
+    if (seeds.length === 0) return;
+    setLines((cur) => [
+      ...cur,
+      ...seeds.map(({ part, e, tmp }, i) =>
+        priced({
+          id: tmp,
+          partId: part.partId,
+          quantity: e.quantity,
+          costPerUnitCents: e.costPerUnitCents,
+          markup: "",
+          leadTimeWeeks: null,
+          tierLabel: null,
+          quoteUnitPriceCents: 0,
+          quoteTotalCents: 0,
+          sortOrder: cur.length + i,
+        }),
+      ),
+    ]);
+    for (const { part, e, tmp } of seeds) {
+      runNow(async () => {
+        const res = await addQuoteLineItemAction({
+          orgSlug: ctx.orgSlug,
+          rfqParam: ctx.rfqParam,
+          rfqId: ctx.rfqId,
+          input: { partId: part.partId, quantity: e.quantity, costPerUnitCents: e.costPerUnitCents, markupPct: 0 },
+        });
+        if (res.ok) setLines((cur) => cur.map((l) => (l.id === tmp ? rowToLine(res.data) : l)));
+        return res;
+      }, () => setLines((cur) => cur.filter((l) => l.id !== tmp)));
+    }
+  }
+
+  function duplicateTier(lineId: string) {
+    if (!ctx || isTempId(lineId)) return;
+    const src = lines.find((l) => l.id === lineId);
+    if (!src) return;
+    const tmp = newTempId();
+    const clone = priced({ ...src, id: tmp, markup: "", leadTimeWeeks: null, tierLabel: null });
+    setLines((cur) => {
+      const idx = cur.findIndex((l) => l.id === lineId);
+      return [...cur.slice(0, idx + 1), clone, ...cur.slice(idx + 1)];
+    });
+    runNow(async () => {
+      const res = await duplicateQuoteLineItemAction({
+        orgSlug: ctx.orgSlug,
+        rfqParam: ctx.rfqParam,
+        lineItemId: lineId,
+      });
+      if (res.ok) setLines((cur) => cur.map((l) => (l.id === tmp ? rowToLine(res.data) : l)));
+      return res;
+    }, () => setLines((cur) => cur.filter((l) => l.id !== tmp)));
+  }
+
+  function deleteTier(lineId: string) {
+    const before = lines;
+    setLines((cur) => cur.filter((l) => l.id !== lineId));
+    setSelected((cur) => {
+      const next = new Set(cur);
+      next.delete(lineId);
       return next;
     });
+    if (!ctx || isTempId(lineId)) return;
+    runNow(
+      () =>
+        deleteQuoteLineItemAction({
+          orgSlug: ctx.orgSlug,
+          rfqParam: ctx.rfqParam,
+          lineItemId: lineId,
+        }),
+      () => setLines(before),
+    );
   }
+
+  function moveTier(partId: string, lineId: string, dir: "up" | "down") {
+    if (!ctx) return;
+    const partLines = lines.filter((l) => l.partId === partId);
+    const i = partLines.findIndex((l) => l.id === lineId);
+    const j = dir === "up" ? i - 1 : i + 1;
+    if (j < 0 || j >= partLines.length) return;
+    const swapped = [...partLines];
+    const a = swapped[i];
+    const b = swapped[j];
+    if (!a || !b) return;
+    swapped[i] = b;
+    swapped[j] = a;
+    let k = 0;
+    const before = lines;
+    const reordered = lines.map((l) => (l.partId === partId ? (swapped[k++] ?? l) : l));
+    setLines(reordered);
+    // Reorder needs the full draft quote's ids; skip while any create is pending.
+    if (reordered.some((l) => isTempId(l.id))) return;
+    runNow(
+      () =>
+        reorderQuoteLineItemsAction({
+          orgSlug: ctx.orgSlug,
+          rfqParam: ctx.rfqParam,
+          rfqId: ctx.rfqId,
+          orderedIds: reordered.map((l) => l.id),
+        }),
+      () => setLines(before),
+    );
+  }
+
+  // ─── Bulk apply: base ← option0 (update); extras → new tiers (add) ─────────────
+  function applyBulk() {
+    if (!ctx) return;
+    const opts = bulkOptions;
+    const base = opts[0];
+    const sel = lines.filter((l) => selected.has(l.id) && !isTempId(l.id));
+    const plan = sel.map((line) => ({
+      line,
+      before: line,
+      extras: opts.slice(1).map((opt) => ({ tmp: newTempId(), opt })),
+    }));
+
+    setLines((cur) =>
+      cur.flatMap((line) => {
+        const p = plan.find((x) => x.line.id === line.id);
+        if (!p) return [line];
+        const updatedBase = base
+          ? priced({ ...line, markup: base.markup, leadTimeWeeks: parseWeeks(base.leadTime) })
+          : line;
+        const extraLines = p.extras.map(({ tmp, opt }) =>
+          priced({
+            ...line,
+            id: tmp,
+            markup: opt.markup,
+            leadTimeWeeks: parseWeeks(opt.leadTime),
+            tierLabel: null,
+          }),
+        );
+        return [updatedBase, ...extraLines];
+      }),
+    );
+
+    for (const p of plan) {
+      if (base) {
+        runNow(
+          () =>
+            updateQuoteLineItemAction({
+              orgSlug: ctx.orgSlug,
+              rfqParam: ctx.rfqParam,
+              lineItemId: p.line.id,
+              patch: { markupPct: parseMarkupNum(base.markup), leadTimeWeeks: parseWeeks(base.leadTime) },
+            }),
+          () => setLines((cur) => cur.map((l) => (l.id === p.line.id ? p.before : l))),
+        );
+      }
+      for (const { tmp, opt } of p.extras) {
+        runNow(async () => {
+          const res = await addQuoteLineItemAction({
+            orgSlug: ctx.orgSlug,
+            rfqParam: ctx.rfqParam,
+            rfqId: ctx.rfqId,
+            input: {
+              partId: p.line.partId,
+              quantity: p.line.quantity,
+              costPerUnitCents: p.line.costPerUnitCents,
+              markupPct: parseMarkupNum(opt.markup),
+              leadTimeWeeks: parseWeeks(opt.leadTime),
+            },
+          });
+          if (res.ok) setLines((cur) => cur.map((l) => (l.id === tmp ? rowToLine(res.data) : l)));
+          return res;
+        }, () => setLines((cur) => cur.filter((l) => l.id !== tmp)));
+      }
+    }
+    resetBulkOptions();
+    setBulkDismissed(true);
+    setSelected(new Set());
+  }
+
+  // ─── Notes (debounced) ────────────────────────────────────────────────────────
+  function editQuoteNote(value: string) {
+    const before = quoteNote;
+    setQuoteNote(value);
+    if (!ctx) return;
+    schedule(
+      "quoteNote",
+      () =>
+        updateQuoteNotesAction({
+          orgSlug: ctx.orgSlug,
+          rfqParam: ctx.rfqParam,
+          rfqId: ctx.rfqId,
+          notesForCustomer: value,
+        }),
+      () => setQuoteNote(before),
+    );
+  }
+
+  function editPartNote(partId: string, value: string) {
+    const before = notes[partId] ?? "";
+    setNotes((p) => ({ ...p, [partId]: value }));
+    if (!ctx) return;
+    schedule(
+      `partNote:${partId}`,
+      () =>
+        updateQuotePartNoteAction({
+          orgSlug: ctx.orgSlug,
+          rfqParam: ctx.rfqParam,
+          partId,
+          note: value,
+        }),
+      () => setNotes((p) => ({ ...p, [partId]: before })),
+    );
+  }
+
+  // ─── Selection / bulk-panel / groups (session-only) ────────────────────────────
   function toggleSelect(id: string) {
     setBulkDismissed(false);
     setSelected((prev) => {
@@ -124,10 +408,7 @@ export function QuoteView({
     setSelected(allSelected ? new Set() : new Set(lines.map((l) => l.id)));
   }
   function addOption() {
-    setBulkOptions((prev) => [
-      ...prev,
-      { id: `opt-${optionSeq.current++}`, leadTime: "", markup: "" },
-    ]);
+    setBulkOptions((prev) => [...prev, { id: `opt-${optionSeq.current++}`, leadTime: "", markup: "" }]);
   }
   function removeOption(id: string) {
     setBulkOptions((prev) => (prev.length > 1 ? prev.filter((o) => o.id !== id) : prev));
@@ -139,66 +420,29 @@ export function QuoteView({
     optionSeq.current = 0;
     setBulkOptions([{ id: "opt-base", leadTime: "", markup: "" }]);
   }
-  // Replace each selected line with one duplicate per option, each carrying that
-  // option's markup + lead time. A single option edits the line in place (it
-  // keeps the original id); extra options become new rows beside it (see 17.4).
-  function applyBulk() {
-    setLines((prev) =>
-      prev.flatMap((line) => {
-        if (!selected.has(line.id)) return [line];
-        return bulkOptions.map((opt, i) => ({
-          ...line,
-          id: i === 0 ? line.id : `${line.id}::${crypto.randomUUID()}`,
-          markup: opt.markup,
-          leadTime: opt.leadTime,
-        }));
-      }),
-    );
-    resetBulkOptions();
-    setBulkDismissed(true);
-  }
   function cancelBulk() {
     resetBulkOptions();
     setBulkDismissed(true);
-  }
-  function resetAll() {
-    setLines(buildInitialLines());
-    setSelected(new Set());
-    setGroups([]);
   }
   function addGroup() {
     if (selected.size === 0) return;
     setGroups((prev) => [
       ...prev,
-      {
-        id: crypto.randomUUID(),
-        name: groupName.trim() || `Group ${prev.length + 1}`,
-        lineIds: [...selected],
-      },
+      { id: crypto.randomUUID(), name: groupName.trim() || `Group ${prev.length + 1}`, lineIds: [...selected] },
     ]);
   }
   function groupSubtotal(group: QuoteGroup): number {
-    return lines
-      .filter((l) => group.lineIds.includes(l.id))
-      .reduce(
-        (sum, l) => sum + quoteTotalPrice(l.estimateUnitPrice, l.markup, l.quantity, roundUnit),
-        0,
-      );
+    return lines.filter((l) => group.lineIds.includes(l.id)).reduce((sum, l) => sum + dispTotal(l), 0);
   }
-  // "Preview Quote": persist the quote (number + current lines/variants/notes)
-  // to the client store, then navigate to the Send page. Quote number is stubbed
-  // to the RFQ number for now (no DB persistence yet — see quote-store.ts).
+
   function preview() {
-    if (!orgSlug || !rfqParam || !rfqId) {
-      setToast("Preview unavailable");
-      if (toastTimer.current) clearTimeout(toastTimer.current);
-      toastTimer.current = setTimeout(() => setToast(null), 2500);
-      return;
-    }
-    const snapshot = buildSnapshot(lines, notes, quoteNote, rfqNumber ?? 0, roundUnit);
-    saveQuoteSnapshot(rfqId, snapshot);
-    router.push(`/${orgSlug}/rfqs/${rfqParam}/send`);
+    if (!ctx) return;
+    const snapshot = buildSnapshot(parts, lines, notes, quoteNote, rfqNumber ?? 0, roundUnit);
+    saveQuoteSnapshot(ctx.rfqId, snapshot);
+    router.push(`/${ctx.orgSlug}/rfqs/${ctx.rfqParam}/send`);
   }
+
+  const colSpanRest = showMarkup ? 8 : 6;
 
   return (
     <TooltipProvider delayDuration={150}>
@@ -207,58 +451,58 @@ export function QuoteView({
           {/* Main column */}
           <div className="min-w-0 flex-1 p-6">
             <div className="mb-4 flex items-center justify-between gap-4">
-              <h1 className="text-2xl font-bold text-gray-900">Quote</h1>
+              <div className="flex items-center gap-3">
+                <h1 className="text-2xl font-bold text-gray-900">{t("title")}</h1>
+                {saving && <span className="text-xs text-gray-400">{t("saving")}</span>}
+              </div>
               <div className="flex items-center gap-5">
+                <ToggleSwitch label={t("show_no_bid")} checked={showNoBid} onChange={setShowNoBid} />
                 <ToggleSwitch
-                  label="Show No Bid Parts"
-                  checked={showNoBid}
-                  onChange={setShowNoBid}
-                />
-                <ToggleSwitch
-                  label="Show Estimate & Markup"
+                  label={t("show_markup")}
                   checked={showMarkup}
                   onChange={(v) => {
                     setShowMarkup(v);
                     if (v) setBulkDismissed(false);
                   }}
                 />
-                <ToggleSwitch
-                  label="Round Quote Unit Price"
-                  checked={roundUnit}
-                  onChange={setRoundUnit}
-                />
-                <button
-                  type="button"
-                  onClick={resetAll}
-                  className="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50"
-                >
-                  Reset All
-                </button>
+                <ToggleSwitch label={t("round_unit")} checked={roundUnit} onChange={setRoundUnit} />
               </div>
             </div>
+
+            {lines.length === 0 && ctx && parts.some((p) => !p.noBid) && (
+              <div className="mb-4 flex items-center justify-between rounded-md border border-dashed border-gray-300 bg-gray-50 px-4 py-3">
+                <span className="text-sm text-gray-500">{t("empty_hint")}</span>
+                <button
+                  type="button"
+                  onClick={generateFromEstimate}
+                  className="rounded-md bg-[hsl(var(--primary))] px-3 py-1.5 text-sm font-medium text-[hsl(var(--primary-foreground))] transition-colors hover:bg-[hsl(var(--primary)/0.9)]"
+                >
+                  {t("generate_from_estimate")}
+                </button>
+              </div>
+            )}
 
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-gray-200 text-left align-bottom text-xs text-gray-500">
-                  <th className="px-4 py-2 font-medium">Items</th>
+                  <th className="px-4 py-2 font-medium">{t("col_items")}</th>
                   <th className="whitespace-nowrap px-2 py-2 text-right font-medium">
-                    Select All:{" "}
+                    {t("col_select_all")}{" "}
                     <input
                       type="checkbox"
                       checked={allSelected}
                       onChange={toggleAll}
-                      aria-label="Select all lines"
+                      aria-label={t("col_select_all")}
                       className="ml-1 align-middle accent-[hsl(var(--primary))]"
                     />
                   </th>
-                  <th className="px-2 py-2 text-right font-medium">Quantity</th>
-                  {showMarkup && (
-                    <th className="px-2 py-2 text-right font-medium">Estimate Unit Price</th>
-                  )}
-                  {showMarkup && <th className="px-2 py-2 text-right font-medium">Markup</th>}
-                  <th className="px-2 py-2 text-right font-medium">Quote Unit Price</th>
-                  <th className="px-2 py-2 text-right font-medium">Quote Total Price</th>
-                  <th className="px-2 py-2 text-left font-medium">Lead Time</th>
+                  <th className="px-2 py-2 text-right font-medium">{t("col_quantity")}</th>
+                  {showMarkup && <th className="px-2 py-2 text-right font-medium">{t("col_estimate_unit")}</th>}
+                  {showMarkup && <th className="px-2 py-2 text-right font-medium">{t("col_markup")}</th>}
+                  <th className="px-2 py-2 text-right font-medium">{t("col_quote_unit")}</th>
+                  <th className="px-2 py-2 text-right font-medium">{t("col_quote_total")}</th>
+                  <th className="px-2 py-2 text-left font-medium">{t("col_tier")}</th>
+                  <th className="px-2 py-2 text-left font-medium">{t("col_lead_time")}</th>
                   <th className="px-2 py-2" />
                 </tr>
               </thead>
@@ -266,7 +510,7 @@ export function QuoteView({
                 {visibleParts.map((part) => {
                   const partLines = lines.filter((l) => l.partId === part.partId);
                   const rowCount = part.noBid ? 1 : Math.max(partLines.length, 1);
-                  const items = (
+                  const itemsCell = (
                     <td
                       rowSpan={rowCount}
                       className={cn(
@@ -282,20 +526,36 @@ export function QuoteView({
                           <div className="text-sm font-semibold text-gray-900">
                             {part.partNumber}
                             {part.revision && (
-                              <span className="ml-1 font-normal text-gray-400">
-                                Rev {part.revision}
-                              </span>
+                              <span className="ml-1 font-normal text-gray-400">Rev {part.revision}</span>
                             )}
                           </div>
                           <div className="truncate text-xs text-gray-400">{part.description}</div>
                           {!part.noBid && (
-                            <NoteCell
-                              value={notes[part.partId] ?? ""}
-                              editing={editingNote === part.partId}
-                              onOpen={() => setEditingNote(part.partId)}
-                              onChange={(v) => setNotes((p) => ({ ...p, [part.partId]: v }))}
-                              onClose={() => setEditingNote(null)}
-                            />
+                            <>
+                              <NoteCell
+                                value={notes[part.partId] ?? ""}
+                                editing={editingNote === part.partId}
+                                addLabel={t("add_note")}
+                                onOpen={() => setEditingNote(part.partId)}
+                                onChange={(v) => editPartNote(part.partId, v)}
+                                onClose={() => setEditingNote(null)}
+                              />
+                              {ctx && (
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    addTier(
+                                      part,
+                                      part.estimateByQty[0]?.quantity ?? 1,
+                                      part.estimateByQty[0]?.costPerUnitCents ?? 0,
+                                    )
+                                  }
+                                  className="mt-2 block text-xs font-medium text-[hsl(var(--primary))] hover:underline"
+                                >
+                                  + {t("add_tier")}
+                                </button>
+                              )}
+                            </>
                           )}
                         </div>
                       </div>
@@ -305,132 +565,169 @@ export function QuoteView({
                   if (part.noBid) {
                     return (
                       <tr key={part.partId} className="text-gray-400">
-                        {items}
-                        <td className="border-b border-gray-200 px-2 py-3 text-right">—</td>
-                        <td className="border-b border-gray-200 px-2 py-3 text-right">—</td>
-                        {showMarkup && (
-                          <td className="border-b border-gray-200 px-2 py-3 text-right">—</td>
-                        )}
-                        {showMarkup && (
-                          <td className="border-b border-gray-200 px-2 py-3 text-right">—</td>
-                        )}
-                        <td className="border-b border-gray-200 px-2 py-3 text-right text-[11px] uppercase tracking-wide">
-                          No Bid
+                        {itemsCell}
+                        <td className="border-b border-gray-200 px-2 py-3 text-right" colSpan={2}>
+                          —
                         </td>
-                        <td className="border-b border-gray-200 px-2 py-3 text-right">—</td>
-                        <td className="border-b border-gray-200 px-2 py-3">—</td>
-                        <td className="border-b border-gray-200 px-2 py-3" />
+                        {showMarkup && <td className="border-b border-gray-200 px-2 py-3 text-right" colSpan={2}>—</td>}
+                        <td className="border-b border-gray-200 px-2 py-3 text-right text-[11px] uppercase tracking-wide" colSpan={2}>
+                          {t("no_bid")}
+                        </td>
+                        <td className="border-b border-gray-200 px-2 py-3" colSpan={3} />
                       </tr>
                     );
                   }
 
-                  return partLines.map((line, idx) => {
-                    const unit = quoteUnitPrice(line.estimateUnitPrice, line.markup, roundUnit);
+                  if (partLines.length === 0) {
                     return (
-                      <tr key={line.id} className="hover:bg-gray-50/60">
-                        {idx === 0 && items}
-                        <td className="border-b border-gray-200 px-2 py-3 text-right">
-                          <input
-                            type="checkbox"
-                            checked={selected.has(line.id)}
-                            onChange={() => toggleSelect(line.id)}
-                            aria-label={`Select ${part.partNumber} qty ${line.quantity}`}
-                            className="accent-[hsl(var(--primary))]"
-                          />
-                        </td>
-                        <td className="border-b border-gray-200 px-2 py-3 text-right tabular-nums text-gray-700">
-                          {line.quantity}
-                        </td>
-                        {showMarkup && (
-                          <td className="border-b border-gray-200 px-2 py-3 text-right tabular-nums text-sky-600">
-                            {money(line.estimateUnitPrice)}
-                          </td>
-                        )}
-                        {showMarkup && (
-                          <td className="border-b border-gray-200 px-2 py-3 text-right">
-                            <span className="inline-flex items-center gap-1 rounded border border-gray-200 px-1.5 py-1">
-                              <input
-                                type="text"
-                                inputMode="numeric"
-                                value={line.markup}
-                                onChange={(e) => updateLine(line.id, { markup: e.target.value })}
-                                aria-label="Markup percent"
-                                className="w-10 bg-transparent text-right tabular-nums outline-none"
-                              />
-                              <span className="text-gray-400">%</span>
-                            </span>
-                          </td>
-                        )}
-                        <td className="border-b border-gray-200 px-2 py-3 text-right font-medium tabular-nums text-gray-900">
-                          {money(unit)}
-                        </td>
-                        <td className="border-b border-gray-200 px-2 py-3 text-right font-medium tabular-nums text-gray-900">
-                          {money(unit * line.quantity)}
-                        </td>
-                        <td className="border-b border-gray-200 px-2 py-3">
-                          <input
-                            type="text"
-                            value={line.leadTime}
-                            onChange={(e) => updateLine(line.id, { leadTime: e.target.value })}
-                            aria-label="Lead time"
-                            className="w-28 rounded border border-gray-200 px-2 py-1 text-sm outline-none focus:ring-1 focus:ring-[hsl(var(--ring))]"
-                          />
-                        </td>
-                        <td className="border-b border-gray-200 px-2 py-3 text-right">
-                          <button
-                            type="button"
-                            onClick={() => deleteLine(line.id)}
-                            aria-label="Delete line"
-                            className="text-gray-300 transition-colors hover:text-red-500"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </button>
+                      <tr key={part.partId}>
+                        {itemsCell}
+                        <td
+                          colSpan={colSpanRest}
+                          className="border-b border-gray-200 px-2 py-4 text-center text-xs text-gray-400"
+                        >
+                          {t("no_tiers")}
                         </td>
                       </tr>
                     );
-                  });
+                  }
+
+                  return partLines.map((line, idx) => (
+                    <tr key={line.id} className="hover:bg-gray-50/60">
+                      {idx === 0 && itemsCell}
+                      <td className="border-b border-gray-200 px-2 py-3 text-right">
+                        <input
+                          type="checkbox"
+                          checked={selected.has(line.id)}
+                          onChange={() => toggleSelect(line.id)}
+                          aria-label={t("select_line")}
+                          className="accent-[hsl(var(--primary))]"
+                        />
+                      </td>
+                      <td className="border-b border-gray-200 px-2 py-3 text-right">
+                        <input
+                          type="text"
+                          inputMode="numeric"
+                          value={String(line.quantity)}
+                          onChange={(e) => {
+                            const q = Math.max(1, Math.round(parseDecimal(e.target.value) || 0));
+                            editLine(line.id, { quantity: q }, "quantity");
+                          }}
+                          aria-label={t("col_quantity")}
+                          className="w-16 rounded border border-gray-200 px-1.5 py-1 text-right tabular-nums outline-none focus:ring-1 focus:ring-[hsl(var(--ring))]"
+                        />
+                      </td>
+                      {showMarkup && (
+                        <td className="border-b border-gray-200 px-2 py-3 text-right tabular-nums text-sky-600">
+                          {money(line.costPerUnitCents)}
+                        </td>
+                      )}
+                      {showMarkup && (
+                        <td className="border-b border-gray-200 px-2 py-3 text-right">
+                          <span className="inline-flex items-center gap-1 rounded border border-gray-200 px-1.5 py-1">
+                            <input
+                              type="text"
+                              inputMode="numeric"
+                              value={line.markup}
+                              onChange={(e) => editLine(line.id, { markup: e.target.value }, "markup")}
+                              aria-label={t("col_markup")}
+                              className="w-12 bg-transparent text-right tabular-nums outline-none"
+                            />
+                            <span className="text-gray-400">%</span>
+                          </span>
+                        </td>
+                      )}
+                      <td className="border-b border-gray-200 px-2 py-3 text-right font-medium tabular-nums text-gray-900">
+                        {money(dispUnit(line))}
+                      </td>
+                      <td className="border-b border-gray-200 px-2 py-3 text-right font-medium tabular-nums text-gray-900">
+                        {money(dispTotal(line))}
+                      </td>
+                      <td className="border-b border-gray-200 px-2 py-3">
+                        <input
+                          type="text"
+                          value={line.tierLabel ?? ""}
+                          onChange={(e) =>
+                            editLine(line.id, { tierLabel: e.target.value.trim() === "" ? null : e.target.value }, "tierLabel")
+                          }
+                          placeholder={t("tier_placeholder")}
+                          aria-label={t("col_tier")}
+                          className="w-24 rounded border border-gray-200 px-2 py-1 text-sm outline-none focus:ring-1 focus:ring-[hsl(var(--ring))]"
+                        />
+                      </td>
+                      <td className="border-b border-gray-200 px-2 py-3">
+                        <span className="inline-flex items-center gap-1">
+                          <input
+                            type="text"
+                            inputMode="numeric"
+                            value={line.leadTimeWeeks == null ? "" : String(line.leadTimeWeeks)}
+                            onChange={(e) =>
+                              editLine(line.id, { leadTimeWeeks: parseWeeks(e.target.value) }, "leadTime")
+                            }
+                            aria-label={t("col_lead_time")}
+                            className="w-14 rounded border border-gray-200 px-2 py-1 text-right text-sm outline-none focus:ring-1 focus:ring-[hsl(var(--ring))]"
+                          />
+                          <span className="text-xs text-gray-400">{t("weeks")}</span>
+                        </span>
+                      </td>
+                      <td className="border-b border-gray-200 px-2 py-3">
+                        <div className="flex items-center justify-end gap-1.5 text-gray-300">
+                          <button
+                            type="button"
+                            onClick={() => moveTier(part.partId, line.id, "up")}
+                            disabled={idx === 0}
+                            aria-label={t("move_up")}
+                            className="transition-colors hover:text-gray-600 disabled:opacity-30"
+                          >
+                            <ChevronUp className="h-4 w-4" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => moveTier(part.partId, line.id, "down")}
+                            disabled={idx === partLines.length - 1}
+                            aria-label={t("move_down")}
+                            className="transition-colors hover:text-gray-600 disabled:opacity-30"
+                          >
+                            <ChevronDown className="h-4 w-4" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => duplicateTier(line.id)}
+                            aria-label={t("duplicate_tier")}
+                            className="transition-colors hover:text-gray-600"
+                          >
+                            <Copy className="h-4 w-4" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => deleteTier(line.id)}
+                            aria-label={t("delete_line")}
+                            className="transition-colors hover:text-red-500"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ));
                 })}
               </tbody>
             </table>
 
-            {/* Selected-totals summary — only when ≥1 row is selected */}
             {selectedLines.length > 0 && (
               <div className="mt-6 flex justify-end">
                 <div className="w-[26rem]">
                   <div className="text-right text-[11px] font-medium uppercase tracking-wider text-gray-400">
-                    Selected ({selectedLines.length} line item
-                    {selectedLines.length === 1 ? "" : "s"})
+                    {t("selected_count", { count: selectedLines.length })}
                   </div>
                   <div className="mt-2 flex items-center justify-end gap-2">
-                    <span className="text-sm text-gray-500">Estimate total</span>
-                    <HoverCard openDelay={150} closeDelay={250}>
-                      <HoverCardTrigger asChild>
-                        <button
-                          type="button"
-                          aria-label="Cost breakdown"
-                          className="text-gray-400 transition-colors hover:text-gray-600"
-                        >
-                          <Info className="h-3.5 w-3.5" />
-                        </button>
-                      </HoverCardTrigger>
-                      <HoverCardContent
-                        align="end"
-                        side="bottom"
-                        sideOffset={2}
-                        className="w-auto p-4"
-                      >
-                        <BreakdownBar
-                          segments={segmentsFromValues(selBreakdown)}
-                          className="w-[44rem] max-w-[85vw]"
-                        />
-                      </HoverCardContent>
-                    </HoverCard>
+                    <span className="text-sm text-gray-500">{t("estimate_total")}</span>
                     <span className="w-28 text-right text-base font-bold tabular-nums text-gray-900">
                       {money(selEstimateTotal)}
                     </span>
                   </div>
                   <div className="mt-1 flex items-center justify-end gap-2">
-                    <span className="text-sm text-gray-500">Quote total</span>
+                    <span className="text-sm text-gray-500">{t("quote_total")}</span>
                     <span className="w-28 text-right text-base font-bold tabular-nums text-gray-900">
                       {money(selQuoteTotal)}
                     </span>
@@ -439,12 +736,11 @@ export function QuoteView({
               </div>
             )}
 
-            {/* Group Total control */}
             <div className="mt-4 flex items-center gap-2">
               <input
                 value={groupName}
                 onChange={(e) => setGroupName(e.target.value)}
-                aria-label="Group name"
+                aria-label={t("group_name")}
                 className="w-32 rounded border border-gray-200 px-2 py-1.5 text-sm outline-none focus:ring-1 focus:ring-[hsl(var(--ring))]"
               />
               <button
@@ -452,20 +748,16 @@ export function QuoteView({
                 onClick={addGroup}
                 className="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50"
               >
-                Add Group Total
+                {t("add_group_total")}
               </button>
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <button
-                    type="button"
-                    aria-label="About group totals"
-                    className="text-gray-400 hover:text-gray-600"
-                  >
+                  <button type="button" aria-label={t("about_group_totals")} className="text-gray-400 hover:text-gray-600">
                     <Info className="h-4 w-4" />
                   </button>
                 </TooltipTrigger>
                 <TooltipContent side="top" className="max-w-xs">
-                  Bundles the selected line items into a single combined subtotal line on the quote.
+                  {t("group_total_help")}
                 </TooltipContent>
               </Tooltip>
             </div>
@@ -473,19 +765,14 @@ export function QuoteView({
             {groups.length > 0 && (
               <div className="mt-3 space-y-1">
                 {groups.map((g) => (
-                  <div
-                    key={g.id}
-                    className="flex items-center justify-between rounded-md bg-gray-50 px-3 py-2 text-sm"
-                  >
+                  <div key={g.id} className="flex items-center justify-between rounded-md bg-gray-50 px-3 py-2 text-sm">
                     <span className="font-medium text-gray-700">{g.name}</span>
                     <span className="flex items-center gap-3">
-                      <span className="font-semibold tabular-nums text-gray-900">
-                        {money(groupSubtotal(g))}
-                      </span>
+                      <span className="font-semibold tabular-nums text-gray-900">{money(groupSubtotal(g))}</span>
                       <button
                         type="button"
                         onClick={() => setGroups((prev) => prev.filter((x) => x.id !== g.id))}
-                        aria-label="Remove group"
+                        aria-label={t("remove_group")}
                         className="text-gray-300 hover:text-red-500"
                       >
                         <Trash2 className="h-3.5 w-3.5" />
@@ -502,11 +789,11 @@ export function QuoteView({
             {bulkOpen && (
               <div className="-mx-5 -mt-5 mb-5 border-b border-gray-200 bg-slate-50 px-5 py-4">
                 <h2 className="text-sm font-semibold text-gray-900">
-                  Update {selectedLines.length} Selected
+                  {t("update_selected", { count: selectedLines.length })}
                 </h2>
                 <div className="mt-3 flex items-center gap-3 text-xs font-medium text-gray-600">
-                  <span className="flex-1">Lead Time</span>
-                  <span className="w-20 text-right">Markup</span>
+                  <span className="flex-1">{t("col_lead_time")}</span>
+                  <span className="w-20 text-right">{t("col_markup")}</span>
                   <span className="w-4 shrink-0" />
                 </div>
                 <div className="mt-1.5 space-y-2">
@@ -514,10 +801,11 @@ export function QuoteView({
                     <div key={opt.id} className="flex items-center gap-3">
                       <input
                         type="text"
+                        inputMode="numeric"
                         value={opt.leadTime}
                         onChange={(e) => updateOption(opt.id, { leadTime: e.target.value })}
-                        placeholder="e.g. 3 weeks"
-                        aria-label="Lead time"
+                        placeholder={t("weeks")}
+                        aria-label={t("col_lead_time")}
                         className="min-w-0 flex-1 rounded border border-gray-300 bg-white px-2 py-1.5 text-sm outline-none focus:ring-1 focus:ring-[hsl(var(--ring))]"
                       />
                       <span className="flex w-20 shrink-0 items-center gap-1 rounded border border-gray-300 bg-white px-2 py-1.5">
@@ -527,7 +815,7 @@ export function QuoteView({
                           value={opt.markup}
                           onChange={(e) => updateOption(opt.id, { markup: e.target.value })}
                           placeholder="0"
-                          aria-label="Markup percent"
+                          aria-label={t("col_markup")}
                           className="w-full min-w-0 bg-transparent text-right tabular-nums outline-none"
                         />
                         <span className="text-gray-400">%</span>
@@ -536,7 +824,7 @@ export function QuoteView({
                         <button
                           type="button"
                           onClick={() => removeOption(opt.id)}
-                          aria-label="Remove option"
+                          aria-label={t("remove_option")}
                           className="w-4 shrink-0 text-gray-300 transition-colors hover:text-red-500"
                         >
                           <Trash2 className="h-4 w-4" />
@@ -552,7 +840,7 @@ export function QuoteView({
                   onClick={addOption}
                   className="mt-2 w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-600 transition-colors hover:bg-gray-50"
                 >
-                  Add Option
+                  {t("add_option")}
                 </button>
                 <div className="mt-4 flex justify-end gap-2">
                   <button
@@ -560,31 +848,31 @@ export function QuoteView({
                     onClick={cancelBulk}
                     className="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50"
                   >
-                    Cancel
+                    {t("cancel")}
                   </button>
                   <button
                     type="button"
                     onClick={applyBulk}
                     className="rounded-md bg-[hsl(var(--primary))] px-3 py-1.5 text-sm font-medium text-[hsl(var(--primary-foreground))] transition-colors hover:bg-[hsl(var(--primary)/0.9)]"
                   >
-                    Apply
+                    {t("apply")}
                   </button>
                 </div>
               </div>
             )}
 
-            <h2 className="text-sm font-semibold text-gray-900">Customer Information</h2>
+            <h2 className="text-sm font-semibold text-gray-900">{t("customer_info")}</h2>
             <dl className="mt-2 space-y-1 text-sm">
-              <Field label="Contact" value={customer.contact} />
-              <Field label="Organization" value={customer.organization} />
+              <Field label={t("contact")} value={customer?.contact ?? "—"} />
+              <Field label={t("organization")} value={customer?.organization ?? "—"} />
             </dl>
 
-            <h2 className="mt-6 text-sm font-semibold text-gray-900">Add Notes to Quote</h2>
+            <h2 className="mt-6 text-sm font-semibold text-gray-900">{t("add_notes")}</h2>
             <textarea
               value={quoteNote}
-              onChange={(e) => setQuoteNote(e.target.value)}
+              onChange={(e) => editQuoteNote(e.target.value)}
               rows={6}
-              aria-label="Notes to quote"
+              aria-label={t("add_notes")}
               className="mt-2 w-full resize-y rounded-md border border-gray-200 px-3 py-2 text-sm text-gray-700 outline-none focus:ring-1 focus:ring-[hsl(var(--ring))]"
             />
           </aside>
@@ -597,15 +885,9 @@ export function QuoteView({
             onClick={preview}
             className="rounded-md bg-[hsl(var(--primary))] px-4 py-2 text-sm font-medium text-[hsl(var(--primary-foreground))] transition-colors hover:bg-[hsl(var(--primary)/0.9)]"
           >
-            Preview Quote
+            {t("preview_quote")}
           </button>
         </div>
-
-        {toast && (
-          <div className="fixed bottom-16 right-6 z-50 rounded-md bg-gray-900 px-4 py-2 text-sm text-white shadow-lg">
-            {toast}
-          </div>
-        )}
       </div>
     </TooltipProvider>
   );
@@ -650,12 +932,14 @@ function ToggleSwitch({
 function NoteCell({
   value,
   editing,
+  addLabel,
   onOpen,
   onChange,
   onClose,
 }: {
   value: string;
   editing: boolean;
+  addLabel: string;
   onOpen: () => void;
   onChange: (v: string) => void;
   onClose: () => void;
@@ -691,7 +975,7 @@ function NoteCell({
       onClick={onOpen}
       className="mt-1 block text-xs text-[hsl(var(--primary))] hover:underline"
     >
-      Add a note…
+      {addLabel}
     </button>
   );
 }
