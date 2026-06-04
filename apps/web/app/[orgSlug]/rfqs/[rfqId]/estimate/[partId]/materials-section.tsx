@@ -1,6 +1,6 @@
 "use client";
 
-import { type MaterialCard, emptyCard } from "@/lib/quoting/materialCost";
+import type { MaterialCard } from "@/lib/quoting/materialCost";
 import {
   DndContext,
   type DragEndEvent,
@@ -17,53 +17,39 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { Plus } from "lucide-react";
-import type * as React from "react";
 import { MaterialCard as MaterialCardItem } from "./material-card";
 
 interface Props {
   quantities: number[];
   cards: MaterialCard[];
-  setCards: React.Dispatch<React.SetStateAction<MaterialCard[]>>;
+  onAdd: () => void;
+  onPatch: (id: string, patch: Partial<MaterialCard>) => void;
+  onDelete: (id: string) => void;
+  onCopy: (id: string) => void;
+  onReorder: (orderedIds: string[]) => void;
 }
 
-export function MaterialsSection({ quantities, cards, setCards }: Props) {
+export function MaterialsSection({
+  quantities,
+  cards,
+  onAdd,
+  onPatch,
+  onDelete,
+  onCopy,
+  onReorder,
+}: Props) {
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   );
 
-  function addCard() {
-    setCards((prev) => [...prev, { id: crypto.randomUUID(), ...emptyCard("sheet") }]);
-  }
-
-  function patchCard(id: string, patch: Partial<MaterialCard>) {
-    setCards((prev) => prev.map((c) => (c.id === id ? { ...c, ...patch } : c)));
-  }
-
-  function deleteCard(id: string) {
-    setCards((prev) => prev.filter((c) => c.id !== id));
-  }
-
-  function copyCard(id: string) {
-    setCards((prev) => {
-      const index = prev.findIndex((c) => c.id === id);
-      const original = prev[index];
-      if (!original) return prev;
-      const next = [...prev];
-      next.splice(index + 1, 0, { ...original, id: crypto.randomUUID() });
-      return next;
-    });
-  }
-
   function handleDragEnd(event: DragEndEvent) {
     const { active, over } = event;
     if (!over || active.id === over.id) return;
-    setCards((prev) => {
-      const oldIndex = prev.findIndex((c) => c.id === active.id);
-      const newIndex = prev.findIndex((c) => c.id === over.id);
-      if (oldIndex === -1 || newIndex === -1) return prev;
-      return arrayMove(prev, oldIndex, newIndex);
-    });
+    const oldIndex = cards.findIndex((c) => c.id === active.id);
+    const newIndex = cards.findIndex((c) => c.id === over.id);
+    if (oldIndex === -1 || newIndex === -1) return;
+    onReorder(arrayMove(cards, oldIndex, newIndex).map((c) => c.id));
   }
 
   return (
@@ -72,7 +58,7 @@ export function MaterialsSection({ quantities, cards, setCards }: Props) {
         <h2 className="text-sm font-bold text-gray-900">Materials &amp; Parts</h2>
         <button
           type="button"
-          onClick={addCard}
+          onClick={onAdd}
           aria-label="Add material"
           className="grid h-6 w-6 place-items-center rounded-full border border-gray-300 text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700"
         >
@@ -93,9 +79,9 @@ export function MaterialsSection({ quantities, cards, setCards }: Props) {
                 key={card.id}
                 card={card}
                 quantities={quantities}
-                onChange={(patch) => patchCard(card.id, patch)}
-                onDelete={() => deleteCard(card.id)}
-                onCopy={() => copyCard(card.id)}
+                onChange={(patch) => onPatch(card.id, patch)}
+                onDelete={() => onDelete(card.id)}
+                onCopy={() => onCopy(card.id)}
               />
             ))}
             {cards.length === 0 && (

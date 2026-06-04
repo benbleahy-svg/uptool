@@ -6,6 +6,7 @@ import {
   type Operation,
   type OperationType,
   computeOperationCost,
+  isTimeBased,
   operationIsComplete,
 } from "@/lib/quoting/operationCost";
 import { useSortable } from "@dnd-kit/sortable";
@@ -34,6 +35,7 @@ import {
 } from "lucide-react";
 import * as React from "react";
 import { FloatingField, FloatingSelect } from "./floating-field";
+import { OperationDetailPanel } from "./operation-detail-panel";
 import { EmptyPricingCell, PricingCell } from "./pricing-cell";
 import { ROW_ICON_W } from "./pricing-layout";
 
@@ -74,6 +76,10 @@ export function OperationRow({ op, quantities, onChange, onDelete, onCopy }: Pro
   const Icon = OP_ICONS[op.type];
   const def = OPERATION_CATALOGUE[op.type];
   const complete = operationIsComplete(op);
+  const timeBased = isTimeBased(op.type);
+  // Time-based ops show their inputs inline in the header and move prices into the
+  // expanded grid; legacy ops keep fields + prices on the collapsed row.
+  const showHeaderPrices = !timeBased || op.collapsed;
 
   const setField = (key: string, value: string) =>
     onChange({ fields: { ...op.fields, [key]: value } });
@@ -83,101 +89,142 @@ export function OperationRow({ op, quantities, onChange, onDelete, onCopy }: Pro
       ref={setNodeRef}
       style={style}
       className={cn(
-        "group flex rounded-lg border border-gray-200 bg-gray-50",
+        "group flex flex-col rounded-lg border border-gray-200 bg-gray-50",
         isDragging && "z-10 opacity-90 shadow-lg",
       )}
     >
-      <div className="min-w-0 flex-1 p-3">
-        <div className="flex items-center gap-2">
-          <Icon className="h-4 w-4 flex-none text-gray-500" />
-          {editing ? (
-            <input
-              ref={nameInputRef}
-              value={op.name}
-              onChange={(e) => onChange({ name: e.target.value })}
-              onBlur={() => setEditing(false)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" || e.key === "Escape") setEditing(false);
-              }}
-              aria-label="Operation name"
-              className="rounded border border-gray-300 px-1.5 py-0.5 text-sm font-semibold text-gray-900 outline-none focus:ring-1 focus:ring-[hsl(var(--ring))]"
-            />
-          ) : (
-            <OperationName op={op} onEdit={() => setEditing(true)} />
+      <div className="flex">
+        <div className="min-w-0 flex-1 p-3">
+          <div className="flex items-center gap-2">
+            <OpIcon Icon={Icon} nonRecurring={op.nonRecurring} />
+            {editing ? (
+              <input
+                ref={nameInputRef}
+                value={op.name}
+                onChange={(e) => onChange({ name: e.target.value })}
+                onBlur={() => setEditing(false)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === "Escape") setEditing(false);
+                }}
+                aria-label="Operation name"
+                className="rounded border border-gray-300 px-1.5 py-0.5 text-sm font-semibold text-gray-900 outline-none focus:ring-1 focus:ring-[hsl(var(--ring))]"
+              />
+            ) : (
+              <OperationName op={op} onEdit={() => setEditing(true)} />
+            )}
+            <OperationSettings />
+
+            {timeBased && (
+              <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
+                {def.fields.map((field) => (
+                  <OpField
+                    key={field.key}
+                    def={field}
+                    value={op.fields[field.key] ?? ""}
+                    onChange={(v) => setField(field.key, v)}
+                    highlightFilled
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+
+          {!op.collapsed && !timeBased && (
+            <div className="mt-3 flex flex-wrap items-start gap-2">
+              {def.fields.map((field) => (
+                <OpField
+                  key={field.key}
+                  def={field}
+                  value={op.fields[field.key] ?? ""}
+                  onChange={(v) => setField(field.key, v)}
+                />
+              ))}
+            </div>
           )}
-          <OperationSettings />
         </div>
 
-        {!op.collapsed && (
-          <div className="mt-3 flex flex-wrap items-start gap-2">
-            {def.fields.map((field) => (
-              <OpField
-                key={field.key}
-                def={field}
-                value={op.fields[field.key] ?? ""}
-                onChange={(v) => setField(field.key, v)}
+        <div className="flex flex-none items-center px-2">
+          <button
+            type="button"
+            onClick={() => onChange({ collapsed: !op.collapsed })}
+            aria-label={op.collapsed ? "Expand operation" : "Collapse operation"}
+            aria-expanded={!op.collapsed}
+            className="text-gray-400 transition-colors hover:text-gray-600"
+          >
+            <ChevronsUpDown className="h-4 w-4" />
+          </button>
+        </div>
+
+        {/* Always render the price columns (blank placeholders when expanded) so
+            the time inputs and chevron keep their position instead of shifting. */}
+        <div className="flex flex-none items-center py-3">
+          {quantities.map((qty, index) => {
+            const cost = showHeaderPrices && complete ? computeOperationCost(op, qty) : null;
+            return cost ? (
+              <PricingCell
+                // biome-ignore lint/suspicious/noArrayIndexKey: pricing columns are positional
+                key={index}
+                total={cost.total}
+                perUnit={cost.perUnit}
+                blue={cost.overridden}
               />
-            ))}
-          </div>
-        )}
+            ) : (
+              // biome-ignore lint/suspicious/noArrayIndexKey: pricing columns are positional
+              <EmptyPricingCell key={index} />
+            );
+          })}
+        </div>
+
+        <div
+          style={{ width: ROW_ICON_W }}
+          className="flex flex-none flex-col items-center justify-between py-3 text-gray-400"
+        >
+          <button
+            type="button"
+            onClick={onDelete}
+            aria-label="Delete operation"
+            className="transition-colors hover:text-red-600"
+          >
+            <Trash2 className="h-4 w-4" />
+          </button>
+          <button
+            type="button"
+            aria-label="Drag to reorder"
+            className="cursor-grab touch-none transition-colors hover:text-gray-700"
+            {...attributes}
+            {...listeners}
+          >
+            <GripVertical className="h-4 w-4" />
+          </button>
+          <button
+            type="button"
+            onClick={onCopy}
+            aria-label="Copy operation"
+            className="transition-colors hover:text-gray-700"
+          >
+            <Copy className="h-4 w-4" />
+          </button>
+        </div>
       </div>
 
-      <div className="flex flex-none items-center px-2">
-        <button
-          type="button"
-          onClick={() => onChange({ collapsed: !op.collapsed })}
-          aria-label={op.collapsed ? "Expand operation" : "Collapse operation"}
-          aria-expanded={!op.collapsed}
-          className="text-gray-400 transition-colors hover:text-gray-600"
-        >
-          <ChevronsUpDown className="h-4 w-4" />
-        </button>
-      </div>
-
-      <div className="flex flex-none items-center py-3">
-        {quantities.map((qty, index) => {
-          const cost = complete ? computeOperationCost(op, qty) : null;
-          return cost ? (
-            // biome-ignore lint/suspicious/noArrayIndexKey: pricing columns are positional
-            <PricingCell key={index} total={cost.total} perUnit={cost.perUnit} />
-          ) : (
-            // biome-ignore lint/suspicious/noArrayIndexKey: pricing columns are positional
-            <EmptyPricingCell key={index} />
-          );
-        })}
-      </div>
-
-      <div
-        style={{ width: ROW_ICON_W }}
-        className="flex flex-none flex-col items-center justify-between py-3 text-gray-400"
-      >
-        <button
-          type="button"
-          onClick={onDelete}
-          aria-label="Delete operation"
-          className="transition-colors hover:text-red-600"
-        >
-          <Trash2 className="h-4 w-4" />
-        </button>
-        <button
-          type="button"
-          aria-label="Drag to reorder"
-          className="cursor-grab touch-none transition-colors hover:text-gray-700"
-          {...attributes}
-          {...listeners}
-        >
-          <GripVertical className="h-4 w-4" />
-        </button>
-        <button
-          type="button"
-          onClick={onCopy}
-          aria-label="Copy operation"
-          className="transition-colors hover:text-gray-700"
-        >
-          <Copy className="h-4 w-4" />
-        </button>
-      </div>
+      {!op.collapsed && timeBased && (
+        <OperationDetailPanel op={op} quantities={quantities} onChange={onChange} />
+      )}
     </div>
+  );
+}
+
+/** Operation icon with an "NR" badge for non-recurring ops. */
+function OpIcon({ Icon, nonRecurring }: { Icon: LucideIcon; nonRecurring: boolean }) {
+  return (
+    <span className="relative flex-none">
+      <Icon className="h-4 w-4 text-gray-500" />
+      {nonRecurring && (
+        <span className="absolute -bottom-2.5 left-1/2 -translate-x-1/2 rounded bg-gray-200 px-1 text-[8px] font-bold leading-tight tracking-wide text-gray-600">
+          NR
+        </span>
+      )}
+    </span>
   );
 }
 
@@ -230,10 +277,12 @@ function OpField({
   def,
   value,
   onChange,
+  highlightFilled,
 }: {
   def: OpFieldDef;
   value: string;
   onChange: (value: string) => void;
+  highlightFilled?: boolean;
 }) {
   if (def.kind === "dropdown") {
     return (
@@ -260,6 +309,7 @@ function OpField({
       align={def.align}
       onClear={def.clearable ? () => onChange("") : undefined}
       inputMode={def.kind === "number" ? "decimal" : undefined}
+      highlightFilled={highlightFilled}
       className={def.width}
     />
   );

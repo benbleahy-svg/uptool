@@ -20,7 +20,9 @@ import {
 } from "lucide-react";
 import * as React from "react";
 import { Document, Page, pdfjs } from "react-pdf";
+import type { FieldHighlight } from "./field-identity";
 import type { FileRef } from "./mocks/mockFiles";
+import { PdfHighlightOverlay } from "./pdf-highlight-overlay";
 
 // Self-hosted worker (pdfjs-dist 3.11, matching react-pdf 7) — same-origin, CSP-safe.
 pdfjs.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.js";
@@ -29,7 +31,17 @@ const MIN_ZOOM = 10;
 const MAX_ZOOM = 400;
 const clampZoom = (z: number) => Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, z));
 
-export function DrawingViewer({ file, onPopout }: { file: FileRef; onPopout: () => void }) {
+export function DrawingViewer({
+  file,
+  onPopout,
+  highlights = [],
+}: {
+  file: FileRef;
+  onPopout: () => void;
+  /** AI-extraction source highlights to paint on the page (see ADR 0011).
+   *  Empty while extraction returns no bounding boxes — overlay then draws nothing. */
+  highlights?: FieldHighlight[];
+}) {
   const [numPages, setNumPages] = React.useState(0);
   const [page, setPage] = React.useState(1);
   const [pageInput, setPageInput] = React.useState("1");
@@ -37,6 +49,7 @@ export function DrawingViewer({ file, onPopout }: { file: FileRef; onPopout: () 
   const [zoomInput, setZoomInput] = React.useState("80");
   const [rotation, setRotation] = React.useState(0);
   const [fullscreen, setFullscreen] = React.useState(false);
+  const [dims, setDims] = React.useState({ w: 0, h: 0 });
   const containerRef = React.useRef<HTMLDivElement>(null);
   const pageDims = React.useRef({ w: 0, h: 0 });
   const autoOriented = React.useRef(false);
@@ -76,6 +89,7 @@ export function DrawingViewer({ file, onPopout }: { file: FileRef; onPopout: () 
     height: number;
   }) {
     pageDims.current = { w: p.originalWidth, h: p.originalHeight };
+    setDims({ w: p.originalWidth, h: p.originalHeight });
     // Auto-orient drawings to landscape on first load. Uses the effective rendered
     // size so it covers both a portrait media-box and an embedded /Rotate.
     if (!autoOriented.current) {
@@ -200,13 +214,23 @@ export function DrawingViewer({ file, onPopout }: { file: FileRef; onPopout: () 
             error={<ViewerMessage>Couldn’t load this drawing.</ViewerMessage>}
             noData={<ViewerMessage>No drawing file.</ViewerMessage>}
           >
-            <Page
-              pageNumber={page}
-              scale={zoom / 100}
-              rotate={rotation}
-              onLoadSuccess={onPageLoad}
-              className="shadow-lg"
-            />
+            <div className="relative">
+              <Page
+                pageNumber={page}
+                scale={zoom / 100}
+                rotate={rotation}
+                onLoadSuccess={onPageLoad}
+                className="shadow-lg"
+              />
+              <PdfHighlightOverlay
+                highlights={highlights}
+                page={page}
+                pageWidth={dims.w}
+                pageHeight={dims.h}
+                scale={zoom / 100}
+                rotation={rotation}
+              />
+            </div>
           </Document>
         </div>
       </div>

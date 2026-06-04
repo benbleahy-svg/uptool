@@ -5,6 +5,8 @@ import dynamic from "next/dynamic";
 import * as React from "react";
 import { CadCanvas } from "./cad-canvas";
 import { getMockFiles } from "./mocks/mockFiles";
+import { getMockPart } from "./mocks/mockPart";
+import { buildHighlights } from "./pdf-highlight-overlay";
 
 const THUMB_BG: [number, number, number] = [243, 244, 246];
 
@@ -21,6 +23,10 @@ type Mode = "drawing" | "cad";
 
 export function FileViewerPane({ partId }: { partId: string }) {
   const files = getMockFiles(partId);
+  // Source-highlight boxes derived from the part's extracted-field regions, coloured
+  // via the field colour-identity map. Empty until extraction returns coordinates
+  // (see ADR 0011), so the overlay currently paints nothing.
+  const highlights = buildHighlights(getMockPart(partId)?.sourceRegions);
   const drawing = files.drawings[0];
   const cad = files.cad[0];
   const hasDrawing = !!drawing;
@@ -41,7 +47,7 @@ export function FileViewerPane({ partId }: { partId: string }) {
   return (
     <div className="relative h-full w-full overflow-hidden bg-zinc-200">
       {mode === "drawing" && drawing ? (
-        <DrawingViewer file={drawing} onPopout={popout} />
+        <DrawingViewer file={drawing} onPopout={popout} highlights={highlights} />
       ) : cad ? (
         <CadViewer file={cad} onPopout={popout} />
       ) : (

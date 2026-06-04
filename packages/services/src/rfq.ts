@@ -1,9 +1,21 @@
-import { attachments, auditLog, db, emailMessages, emailThreads, orgs, rfqs } from "@uptool/db";
+import {
+  attachments,
+  auditLog,
+  db,
+  emailMessages,
+  emailThreads,
+  orgs,
+  partMaterials,
+  partOperations,
+  parts,
+  quotes,
+  rfqs,
+} from "@uptool/db";
+import { withOrgContext } from "@uptool/db";
 import { isManufacturingFile } from "@uptool/shared";
 import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import { customerService } from "./customer";
 import { storageService } from "./storage";
-import { withOrgContext } from "@uptool/db";
 
 export interface CreateRfqFromEmailInput {
   orgId: string;
@@ -222,7 +234,16 @@ export const rfqService = {
           emailAccount: true,
           attachments: true,
           parts: {
-            columns: { id: true, partNumber: true, revision: true, description: true, material: true, processType: true, sortOrder: true, isNoBid: true },
+            columns: {
+              id: true,
+              partNumber: true,
+              revision: true,
+              description: true,
+              material: true,
+              processType: true,
+              sortOrder: true,
+              isNoBid: true,
+            },
             orderBy: (p, { asc }) => [asc(p.sortOrder)],
           },
           threads: {
@@ -249,7 +270,16 @@ export const rfqService = {
           emailAccount: true,
           attachments: true,
           parts: {
-            columns: { id: true, partNumber: true, revision: true, description: true, material: true, processType: true, sortOrder: true, isNoBid: true },
+            columns: {
+              id: true,
+              partNumber: true,
+              revision: true,
+              description: true,
+              material: true,
+              processType: true,
+              sortOrder: true,
+              isNoBid: true,
+            },
             orderBy: (p, { asc }) => [asc(p.sortOrder)],
           },
           threads: {
@@ -274,12 +304,7 @@ export const rfqService = {
     });
   },
 
-  async assign(
-    orgId: string,
-    actingUserId: string,
-    rfqId: string,
-    assigneeUserId: string | null,
-  ) {
+  async assign(orgId: string, actingUserId: string, rfqId: string, assigneeUserId: string | null) {
     return withOrgContext(orgId, async (tx) => {
       const [actingMembership, rfq] = await Promise.all([
         tx.query.memberships.findFirst({
@@ -386,5 +411,67 @@ export const rfqService = {
       .update(rfqs)
       .set({ status, updatedAt: new Date() })
       .where(and(eq(rfqs.orgId, orgId), inArray(rfqs.id, rfqIds)));
+  },
+
+  /**
+   * Reset the entire estimate for an RFQ back to a fresh, just-imported state.
+   * Runs in a single transaction (all-or-nothing): for every part it deletes all
+   * operations and materials, clears notes / material cost / no-bid / completion
+   * stamps, and nulls `estimateHydratedAt` so the next open re-seeds defaults;
+   * deletes any quotes (line items cascade); clears the RFQ-level quote bulk
+   * fields; and returns the RFQ to status "new", clearing any decline. Preserves
+   * the parts themselves, attachments, AI-extracted fields, quantity breaks, and
+   * all RFQ/customer metadata. See ADR 0018 / 0020.
+   */
+  async resetEstimate(orgId: string, rfqId: string) {
+    return withOrgContext(orgId, async (tx) => {
+      const rfq = await tx.query.rfqs.findFirst({
+        where: (r, { and, eq }) => and(eq(r.id, rfqId), eq(r.orgId, orgId)),
+        columns: { id: true },
+      });
+      if (!rfq) throw new Error("RFQ_NOT_FOUND");
+
+      const rfqParts = await tx.query.parts.findMany({
+        where: (p, { and, eq }) => and(eq(p.rfqId, rfqId), eq(p.orgId, orgId)),
+        columns: { id: true },
+      });
+      const partIds = rfqParts.map((p) => p.id);
+
+      if (partIds.length > 0) {
+        await tx
+          .delete(partOperations)
+          .where(and(eq(partOperations.orgId, orgId), inArray(partOperations.partId, partIds)));
+        await tx
+          .delete(partMaterials)
+          .where(and(eq(partMaterials.orgId, orgId), inArray(partMaterials.partId, partIds)));
+      }
+
+      await tx
+        .update(parts)
+        .set({
+          notesExternal: null,
+          notesInternal: null,
+          materialCostCents: 0,
+          isNoBid: false,
+          estimateCompletedAt: null,
+          estimateHydratedAt: null,
+        })
+        .where(and(eq(parts.rfqId, rfqId), eq(parts.orgId, orgId)));
+
+      await tx.delete(quotes).where(and(eq(quotes.rfqId, rfqId), eq(quotes.orgId, orgId)));
+
+      await tx
+        .update(rfqs)
+        .set({
+          status: "new",
+          declinedAt: null,
+          declinedReason: null,
+          quoteBulkMarkupPct: null,
+          quoteBulkDiscountPct: null,
+          quoteLeadTimeVariants: null,
+          updatedAt: new Date(),
+        })
+        .where(and(eq(rfqs.id, rfqId), eq(rfqs.orgId, orgId)));
+    });
   },
 };

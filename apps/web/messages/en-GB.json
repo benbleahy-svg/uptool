@@ -290,7 +290,19 @@
     "template_recently_used": "Recently used",
     "template_all": "All",
     "template_manual": "— Enter manually —",
-    "no_templates": "No templates. Add one in Settings."
+    "no_templates": "No templates. Add one in Settings.",
+    "reset_tooltip": "Reset estimate",
+    "reset_title": "Reset this RFQ's estimate?",
+    "reset_body": "This clears all operations, materials, overrides, notes, and quote settings on every part in this RFQ. Files, AI-extracted data, workflow selection, and quantities are kept. This can't be undone.",
+    "reset_sent_warning": "This RFQ's quote has already been sent. Resetting will discard the saved quote and return the RFQ to a fresh estimate.",
+    "reset_sent_confirm": "I understand the quote was already sent",
+    "reset_cancel": "Cancel",
+    "reset_confirm": "Reset estimate",
+    "reset_toast": "Estimate reset",
+    "reset_error": "Couldn't reset the estimate. Please try again.",
+    "loading": "Loading estimate…",
+    "saving": "Saving…",
+    "save_failed": "Couldn't save — your last change has been undone."
   },
   "quote": {
     "part": "Part",

@@ -2,6 +2,8 @@
 // Everything here is placeholder until the real estimate service lands in a
 // later prompt. Values are lifted from the design screenshots in `assets/`.
 
+import type { SourceRegion } from "../field-identity";
+
 export interface Part {
   id: string;
   partNumber: string;
@@ -19,8 +21,14 @@ export interface Part {
   weightLb: number;
   surfaceAreaIn2: number;
   volumeIn3: number;
-  /** Source badge shown in the AI extraction table. */
-  source: string;
+  /**
+   * Bounding boxes locating where the AI read each extracted value on the source
+   * drawing, keyed by field label (e.g. "Description", "Material"). The extraction
+   * pipeline does not return these yet, so this is left undefined and no PDF
+   * highlights are drawn. Real boxes light up the overlay once extraction returns
+   * coordinates — see ADR 0011. Do NOT fabricate entries.
+   */
+  sourceRegions?: Record<string, SourceRegion>;
   defaultWorkflowId: string;
   quantities: number[];
 }
@@ -46,18 +54,6 @@ export interface CompletedEstimate {
 export const WORKFLOW_OPTIONS: WorkflowOption[] = [
   { id: "sheet-metal", name: "Sheet Metal" },
   { id: "cnc-milling", name: "CNC Milling" },
-];
-
-export interface RfqPartRef {
-  id: string;
-  partNumber: string;
-}
-
-/** Stub ordered part list for the footer part nav when real RFQ parts are absent. */
-export const MOCK_RFQ_PARTS: RfqPartRef[] = [
-  { id: "p1", partNumber: "5216488" },
-  { id: "p2", partNumber: "MB-2207" },
-  { id: "p3", partNumber: "PEAT Motor Stand" },
 ];
 
 export const COMPLETED_ESTIMATES: CompletedEstimate[] = [
@@ -93,10 +89,12 @@ export const COMPLETED_ESTIMATES: CompletedEstimate[] = [
   },
 ];
 
-const SOURCE = "Technical Drawing / CAD";
-
+// MOCK header metadata only — geometry + AI-extraction verbatim shown in the
+// part header / AI table. Real part identity (number/description/material/finish)
+// is overlaid by the page from the DB; geometry + verbatim remain mock until the
+// extraction epic. NOT the estimate data — ops/materials/notes come from the DB.
 const BASE_PLATE: Part = {
-  id: "p1",
+  id: "mock-header",
   partNumber: "5216488",
   revision: "A",
   description: "BASE PLATE, VENT PLATE - PUB",
@@ -111,64 +109,16 @@ const BASE_PLATE: Part = {
   weightLb: 0.82,
   surfaceAreaIn2: 55.45,
   volumeIn3: 2.9,
-  source: SOURCE,
   defaultWorkflowId: "sheet-metal",
   quantities: [1, 10, 100],
 };
 
-const MOCK_PARTS: Record<string, Part> = {
-  p1: BASE_PLATE,
-  p2: {
-    id: "p2",
-    partNumber: "MB-2207",
-    revision: "B",
-    description: "MOUNTING BRACKET, COLLAR MOUNTING BRACKET - PUB",
-    descriptionVerbatim: "MOUNTING BRACKET, COLLAR MOUNTING BRACKET - PUB",
-    material: "Aluminum 6061 T6 / T6511 (sheet / bar)",
-    materialVerbatim: "6061-T6",
-    finish: "Anodize",
-    finishVerbatim: "ANODIZE, MIL-A-8625, TYPE II, CLASS 1, CLEAR",
-    lengthIn: 2.76,
-    widthIn: 2.17,
-    thicknessIn: 1.58,
-    weightLb: 0.17,
-    surfaceAreaIn2: 24.15,
-    volumeIn3: 1.71,
-    source: SOURCE,
-    defaultWorkflowId: "sheet-metal",
-    quantities: [1, 10, 100],
-  },
-  p3: {
-    id: "p3",
-    partNumber: "PEAT Motor Stand",
-    revision: "",
-    description: "PEAT Motor Stand",
-    descriptionVerbatim: "PEAT MOTOR STAND",
-    material: "Aluminum 6061 T6 / T6511 (sheet / bar)",
-    materialVerbatim: "6061-T6",
-    finish: "Anodize",
-    finishVerbatim: "ANODIZE, MIL-A-8625, TYPE II, CLASS 1, CLEAR",
-    lengthIn: 18.24,
-    widthIn: 8.17,
-    thicknessIn: 4.33,
-    weightLb: 18.98,
-    surfaceAreaIn2: 409.85,
-    volumeIn3: 194.65,
-    source: SOURCE,
-    defaultWorkflowId: "cnc-milling",
-    quantities: [1, 10, 100],
-  },
-};
-
 /**
- * Look up the mock part for a given id. Demo ids (`p1`/`p2`/`p3`) return their
- * seeded data; any other non-empty id falls back to the base-plate part so the
- * page is reachable from real RFQ part ids while the data layer is still stubbed.
- * Returns `undefined` for a missing id so the page can render its empty state.
+ * Mock header metadata for a part (geometry + AI-extraction verbatim only). The
+ * page overlays real identity from the DB; the estimate data (ops/materials/
+ * notes) is loaded from the DB, not from here. Returns `undefined` for an empty id.
  */
 export function getMockPart(partId: string): Part | undefined {
   if (!partId) return undefined;
-  const seeded = MOCK_PARTS[partId];
-  if (seeded) return seeded;
   return { ...BASE_PLATE, id: partId };
 }

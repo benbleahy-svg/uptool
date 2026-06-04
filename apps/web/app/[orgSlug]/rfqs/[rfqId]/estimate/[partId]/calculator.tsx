@@ -1,7 +1,13 @@
 "use client";
 
-import { type MaterialCard, SHEET_CARD_EXAMPLE } from "@/lib/quoting/materialCost";
-import { type Operation, operationIsComplete, partIsComplete } from "@/lib/quoting/operationCost";
+import { type MaterialCard, emptyCard } from "@/lib/quoting/materialCost";
+import {
+  type Operation,
+  createOperation,
+  operationIsComplete,
+  partIsComplete,
+} from "@/lib/quoting/operationCost";
+import type { DerivedRfqStatus } from "@/lib/rfq-status";
 import {
   Dialog,
   DialogTrigger,
@@ -15,26 +21,43 @@ import {
   TooltipTrigger,
   cn,
 } from "@uptool/ui";
-import {
-  Box,
-  ChevronDown,
-  ChevronRight,
-  FileInput,
-  Plus,
-  RefreshCw,
-  Settings,
-  Weight,
-  X,
-} from "lucide-react";
+import { Box, ChevronDown, ChevronRight, FileInput, Plus, Settings, Weight, X } from "lucide-react";
+import { useTranslations } from "next-intl";
 import * as React from "react";
+import {
+  addPartMaterialAction,
+  addPartOperationAction,
+  clearPartOperationOverrideAction,
+  deletePartMaterialAction,
+  deletePartOperationAction,
+  reorderPartMaterialsAction,
+  reorderPartOperationsAction,
+  updatePartMaterialAction,
+  updatePartNotesAction,
+  updatePartOperationAction,
+} from "../actions";
 import { CompletedEstimatesDialog } from "./completed-estimates-dialog";
 import { EstimateFooter } from "./estimate-footer";
+import { FIELD_COLORS, SOURCE_STYLES, type SourceType } from "./field-identity";
 import { MaterialsSection } from "./materials-section";
 import { type Part, WORKFLOW_OPTIONS } from "./mocks/mockPart";
 import { NotesSection } from "./notes-section";
-import { OperationsSection, seedOperations } from "./operations-section";
+import { OperationsSection, resolveType } from "./operations-section";
+import {
+  clientMaterialToFields,
+  clientOpToAddInput,
+  clientOpToFullPatch,
+  opPatchToSaves,
+  revertOpField,
+} from "./persistence";
 import { QTY_COL_W } from "./pricing-layout";
+import { ResetEstimateButton } from "./reset-estimate-button";
 import { TotalRow } from "./total-row";
+import { useEstimateSync } from "./use-estimate-sync";
+
+/** Temp client id for an optimistically-added row before the server returns its real id. */
+const tempId = () => `tmp-${crypto.randomUUID()}`;
+const isTempId = (id: string) => id.startsWith("tmp-");
 
 type Units = "cm" | "mm";
 
@@ -54,6 +77,9 @@ interface AiRow {
   field: string;
   value: string;
   verbatim: string;
+  /** Where this field was read from — drives the Source pill. Text fields come
+   *  from the drawing; geometry from the CAD model; weight is derived. */
+  source: SourceType;
 }
 
 function buildRows(part: Part, units: Units): AiRow[] {
@@ -65,15 +91,30 @@ function buildRows(part: Part, units: Units): AiRow[] {
   const vol = units === "mm" ? part.volumeIn3 * IN3_TO_MM3 : part.volumeIn3 * IN3_TO_CM3;
 
   return [
-    { field: "Description", value: part.description, verbatim: part.descriptionVerbatim },
-    { field: "Material", value: part.material, verbatim: part.materialVerbatim },
-    { field: "Weight", value: `${fmt(part.weightLb)} lb`, verbatim: "" },
-    { field: "Length", value: `${fmt(len)} ${u}`, verbatim: "" },
-    { field: "Width", value: `${fmt(wid)} ${u}`, verbatim: "" },
-    { field: "Thickness", value: `${fmt(thk)} ${u}`, verbatim: "" },
-    { field: "Surface Area", value: `${fmt(area)} ${u}²`, verbatim: "" },
-    { field: "Volume", value: `${fmt(vol)} ${u}³`, verbatim: "" },
-    { field: "Finish", value: part.finish, verbatim: part.finishVerbatim },
+    {
+      field: "Description",
+      value: part.description,
+      verbatim: part.descriptionVerbatim,
+      source: "Technical Drawing",
+    },
+    {
+      field: "Material",
+      value: part.material,
+      verbatim: part.materialVerbatim,
+      source: "Technical Drawing",
+    },
+    { field: "Length", value: `${fmt(len)} ${u}`, verbatim: "", source: "CAD Model" },
+    { field: "Width", value: `${fmt(wid)} ${u}`, verbatim: "", source: "CAD Model" },
+    { field: "Thickness", value: `${fmt(thk)} ${u}`, verbatim: "", source: "CAD Model" },
+    { field: "Surface Area", value: `${fmt(area)} ${u}²`, verbatim: "", source: "CAD Model" },
+    { field: "Volume", value: `${fmt(vol)} ${u}³`, verbatim: "", source: "CAD Model" },
+    { field: "Weight", value: `${fmt(part.weightLb)} lb`, verbatim: "", source: "Calculated" },
+    {
+      field: "Finish",
+      value: part.finish,
+      verbatim: part.finishVerbatim,
+      source: "Technical Drawing",
+    },
   ];
 }
 
@@ -82,22 +123,301 @@ interface CalculatorProps {
   orgSlug: string;
   rfqParam: string;
   rfqId: string;
+  rfqStatus: DerivedRfqStatus;
   partIds: string[];
+  /** Canonical estimate state loaded from the DB (mapped to client models). */
+  initialOperations: Operation[];
+  initialMaterials: MaterialCard[];
+  initialNotesExternal: string;
+  initialNotesInternal: string;
 }
 
-export function Calculator({ part, orgSlug, rfqParam, rfqId, partIds }: CalculatorProps) {
+export function Calculator({
+  part,
+  orgSlug,
+  rfqParam,
+  rfqId,
+  rfqStatus,
+  partIds,
+  initialOperations,
+  initialMaterials,
+  initialNotesExternal,
+  initialNotesInternal,
+}: CalculatorProps) {
+  const t = useTranslations("estimate");
+  const sync = useEstimateSync();
+  const partId = part.id;
+
   const [expanded, setExpanded] = React.useState(false);
   const [units, setUnits] = React.useState<Units>("mm");
   const [workflowId, setWorkflowId] = React.useState(part.defaultWorkflowId);
   const [quantities, setQuantities] = React.useState<string[]>(
     part.quantities.map((q) => String(q)),
   );
-  const [materials, setMaterials] = React.useState<MaterialCard[]>(() => [
-    { id: "material-1", ...SHEET_CARD_EXAMPLE },
-  ]);
-  const [operations, setOperations] = React.useState<Operation[]>(() =>
-    seedOperations(part.surfaceAreaIn2 * IN2_TO_CM2),
-  );
+  const [materials, setMaterials] = React.useState<MaterialCard[]>(initialMaterials);
+  const [operations, setOperations] = React.useState<Operation[]>(initialOperations);
+  const [notesExternal, setNotesExternal] = React.useState(initialNotesExternal);
+  const [notesInternal, setNotesInternal] = React.useState(initialNotesInternal);
+
+  // ─── Operations: optimistic local update + persisted save (see ADR 0020) ────
+  function patchOp(id: string, patch: Partial<Operation>) {
+    const prevOp = operations.find((o) => o.id === id);
+    if (!prevOp) return;
+    setOperations((prev) => prev.map((o) => (o.id === id ? { ...o, ...patch } : o)));
+    if (isTempId(id)) return; // not persisted until the add reconciles
+    for (const save of opPatchToSaves(prevOp, patch)) {
+      // Field-scoped revert: restore only this save's field from the snapshot,
+      // merged onto current state, so a failed save doesn't clobber siblings.
+      const revert = () =>
+        setOperations((prev) =>
+          prev.map((o) => (o.id === id ? revertOpField(o, prevOp, save.key) : o)),
+        );
+      const thunk =
+        save.kind === "clearOverride"
+          ? () =>
+              clearPartOperationOverrideAction({
+                orgSlug,
+                rfqParam,
+                operationId: id,
+                field: "unitPriceOverride",
+              })
+          : () =>
+              updatePartOperationAction({ orgSlug, rfqParam, operationId: id, patch: save.patch });
+      sync.schedule(`op:${id}:${save.key}`, thunk, revert);
+    }
+  }
+
+  function addOp(name: string) {
+    const id = tempId();
+    const optimistic: Operation = { id, ...createOperation(resolveType(name), { name }) };
+    setOperations((prev) => [...prev, optimistic]);
+    sync.runNow(
+      async () => {
+        const res = await addPartOperationAction({
+          orgSlug,
+          rfqParam,
+          partId,
+          input: clientOpToAddInput(optimistic),
+        });
+        if (res.ok) {
+          let existed = false;
+          setOperations((prev) => {
+            existed = prev.some((o) => o.id === id);
+            return existed ? prev.map((o) => (o.id === id ? { ...o, id: res.data.id } : o)) : prev;
+          });
+          // Deleted before the add resolved → remove the orphan we just created.
+          if (!existed) {
+            void deletePartOperationAction({ orgSlug, rfqParam, operationId: res.data.id }).catch(
+              () => {},
+            );
+          }
+        }
+        return res;
+      },
+      () => setOperations((prev) => prev.filter((o) => o.id !== id)),
+    );
+  }
+
+  function deleteOp(id: string) {
+    const snapshot = operations;
+    setOperations((prev) => prev.filter((o) => o.id !== id));
+    if (isTempId(id)) return;
+    sync.runNow(
+      () => deletePartOperationAction({ orgSlug, rfqParam, operationId: id }),
+      () => setOperations(snapshot),
+    );
+  }
+
+  function copyOp(id: string) {
+    const src = operations.find((o) => o.id === id);
+    if (!src) return;
+    const newId = tempId();
+    const copy: Operation = { ...src, id: newId };
+    setOperations((prev) => {
+      const i = prev.findIndex((o) => o.id === id);
+      const next = [...prev];
+      next.splice(i + 1, 0, copy);
+      return next;
+    });
+    sync.runNow(
+      async () => {
+        const res = await addPartOperationAction({
+          orgSlug,
+          rfqParam,
+          partId,
+          input: clientOpToAddInput(copy),
+        });
+        if (res.ok) {
+          const realId = res.data.id;
+          let existed = false;
+          setOperations((prev) => {
+            existed = prev.some((o) => o.id === newId);
+            return existed ? prev.map((o) => (o.id === newId ? { ...o, id: realId } : o)) : prev;
+          });
+          if (existed) {
+            await updatePartOperationAction({
+              orgSlug,
+              rfqParam,
+              operationId: realId,
+              patch: clientOpToFullPatch(copy),
+            });
+          } else {
+            void deletePartOperationAction({ orgSlug, rfqParam, operationId: realId }).catch(
+              () => {},
+            );
+          }
+        }
+        return res;
+      },
+      () => setOperations((prev) => prev.filter((o) => o.id !== newId)),
+    );
+  }
+
+  function reorderOps(orderedIds: string[]) {
+    const snapshot = operations;
+    setOperations(
+      (prev) =>
+        orderedIds.map((oid) => prev.find((o) => o.id === oid)).filter(Boolean) as Operation[],
+    );
+    if (orderedIds.some(isTempId)) return;
+    sync.runNow(
+      () => reorderPartOperationsAction({ orgSlug, rfqParam, partId, orderedIds }),
+      () => setOperations(snapshot),
+    );
+  }
+
+  // ─── Materials: optimistic local update + persisted save ────────────────────
+  function patchMat(id: string, patch: Partial<MaterialCard>) {
+    const prevCard = materials.find((m) => m.id === id);
+    if (!prevCard) return;
+    const nextCard = { ...prevCard, ...patch };
+    setMaterials((prev) => prev.map((m) => (m.id === id ? nextCard : m)));
+    if (isTempId(id)) return;
+    sync.schedule(
+      `mat:${id}`,
+      () =>
+        updatePartMaterialAction({
+          orgSlug,
+          rfqParam,
+          materialId: id,
+          patch: clientMaterialToFields(nextCard),
+        }),
+      () => setMaterials((prev) => prev.map((m) => (m.id === id ? prevCard : m))),
+    );
+  }
+
+  function addMat() {
+    const id = tempId();
+    const optimistic: MaterialCard = { id, ...emptyCard("sheet") };
+    setMaterials((prev) => [...prev, optimistic]);
+    sync.runNow(
+      async () => {
+        const res = await addPartMaterialAction({
+          orgSlug,
+          rfqParam,
+          partId,
+          input: clientMaterialToFields(optimistic),
+        });
+        if (res.ok) {
+          let existed = false;
+          setMaterials((prev) => {
+            existed = prev.some((m) => m.id === id);
+            return existed ? prev.map((m) => (m.id === id ? { ...m, id: res.data.id } : m)) : prev;
+          });
+          if (!existed) {
+            void deletePartMaterialAction({ orgSlug, rfqParam, materialId: res.data.id }).catch(
+              () => {},
+            );
+          }
+        }
+        return res;
+      },
+      () => setMaterials((prev) => prev.filter((m) => m.id !== id)),
+    );
+  }
+
+  function deleteMat(id: string) {
+    const snapshot = materials;
+    setMaterials((prev) => prev.filter((m) => m.id !== id));
+    if (isTempId(id)) return;
+    sync.runNow(
+      () => deletePartMaterialAction({ orgSlug, rfqParam, materialId: id }),
+      () => setMaterials(snapshot),
+    );
+  }
+
+  function copyMat(id: string) {
+    const src = materials.find((m) => m.id === id);
+    if (!src) return;
+    const newId = tempId();
+    const copy: MaterialCard = { ...src, id: newId };
+    setMaterials((prev) => {
+      const i = prev.findIndex((m) => m.id === id);
+      const next = [...prev];
+      next.splice(i + 1, 0, copy);
+      return next;
+    });
+    sync.runNow(
+      async () => {
+        const res = await addPartMaterialAction({
+          orgSlug,
+          rfqParam,
+          partId,
+          input: clientMaterialToFields(copy),
+        });
+        if (res.ok) {
+          let existed = false;
+          setMaterials((prev) => {
+            existed = prev.some((m) => m.id === newId);
+            return existed
+              ? prev.map((m) => (m.id === newId ? { ...m, id: res.data.id } : m))
+              : prev;
+          });
+          if (!existed) {
+            void deletePartMaterialAction({ orgSlug, rfqParam, materialId: res.data.id }).catch(
+              () => {},
+            );
+          }
+        }
+        return res;
+      },
+      () => setMaterials((prev) => prev.filter((m) => m.id !== newId)),
+    );
+  }
+
+  function reorderMats(orderedIds: string[]) {
+    const snapshot = materials;
+    setMaterials(
+      (prev) =>
+        orderedIds.map((mid) => prev.find((m) => m.id === mid)).filter(Boolean) as MaterialCard[],
+    );
+    if (orderedIds.some(isTempId)) return;
+    sync.runNow(
+      () => reorderPartMaterialsAction({ orgSlug, rfqParam, partId, orderedIds }),
+      () => setMaterials(snapshot),
+    );
+  }
+
+  // ─── Notes: debounced persistence ("" clears; controlled value) ─────────────
+  function changeNote(field: "external" | "internal", value: string) {
+    if (field === "external") {
+      const prev = notesExternal;
+      setNotesExternal(value);
+      sync.schedule(
+        "notes:external",
+        () => updatePartNotesAction({ orgSlug, rfqParam, partId, patch: { external: value } }),
+        () => setNotesExternal(prev),
+      );
+    } else {
+      const prev = notesInternal;
+      setNotesInternal(value);
+      sync.schedule(
+        "notes:internal",
+        () => updatePartNotesAction({ orgSlug, rfqParam, partId, patch: { internal: value } }),
+        () => setNotesInternal(prev),
+      );
+    }
+  }
 
   const qtyNumbers = quantities.map((q) => Number(q) || 0);
   const partComplete = partIsComplete({ materials, operations });
@@ -128,7 +448,9 @@ export function Calculator({ part, orgSlug, rfqParam, rfqId, partIds }: Calculat
   return (
     <TooltipProvider delayDuration={150}>
       <div className="flex h-full flex-col bg-[hsl(var(--background))]">
-        <div className="flex-1 overflow-auto">
+        {/* Fixed header — part info, AI-extraction table, and workflow/qty toolbar
+            stay pinned at the top of the left pane while the section below scrolls. */}
+        <div className="flex-none">
           {/* Row 1 — part number + units toggle */}
           <div className="flex items-start justify-between gap-4 px-5 pb-1 pt-4">
             <div className="min-w-0">
@@ -144,7 +466,14 @@ export function Calculator({ part, orgSlug, rfqParam, rfqId, partIds }: Calculat
                 ) : null}
               </h1>
             </div>
-            <UnitsToggle units={units} onChange={setUnits} />
+            <div className="flex flex-none items-center gap-3">
+              {sync.saving && (
+                <span aria-live="polite" className="text-xs text-[hsl(var(--muted-foreground))]">
+                  {t("saving")}
+                </span>
+              )}
+              <UnitsToggle units={units} onChange={setUnits} />
+            </div>
           </div>
 
           {/* Collapsible part info */}
@@ -228,13 +557,13 @@ export function Calculator({ part, orgSlug, rfqParam, rfqId, partIds }: Calculat
                             {row.field}
                           </td>
                           <td className="px-3 py-2 font-semibold">{row.value}</td>
-                          <td className="px-3 py-2 italic text-[hsl(var(--muted-foreground))]">
-                            {row.verbatim}
+                          <td className="px-3 py-2">
+                            {row.verbatim ? (
+                              <VerbatimPill field={row.field} text={row.verbatim} />
+                            ) : null}
                           </td>
                           <td className="px-3 py-2">
-                            <span className="inline-block rounded bg-[hsl(var(--accent))] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[hsl(var(--primary))]">
-                              {part.source}
-                            </span>
+                            <SourcePill source={row.source} />
                           </td>
                         </tr>
                       ))}
@@ -245,8 +574,8 @@ export function Calculator({ part, orgSlug, rfqParam, rfqId, partIds }: Calculat
             </div>
           </div>
 
-          {/* Sticky toolbar — workflow + qty */}
-          <div className="sticky top-0 z-10 flex items-center gap-2 border-y border-[hsl(var(--border))] bg-[hsl(var(--background))] px-5 py-2">
+          {/* Workflow + qty toolbar (part of the fixed header) */}
+          <div className="flex items-center gap-2 border-y border-[hsl(var(--border))] bg-[hsl(var(--background))] px-5 py-2">
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <button
@@ -292,19 +621,12 @@ export function Calculator({ part, orgSlug, rfqParam, rfqId, partIds }: Calculat
               <CompletedEstimatesDialog />
             </Dialog>
 
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  type="button"
-                  aria-label="Re-run AI on part files"
-                  onClick={() => console.log("Re-run AI on part files")}
-                  className="text-[hsl(var(--muted-foreground))] transition-colors hover:text-[hsl(var(--foreground))]"
-                >
-                  <RefreshCw className="h-[18px] w-[18px]" />
-                </button>
-              </TooltipTrigger>
-              <TooltipContent side="bottom">Re-run AI on part files</TooltipContent>
-            </Tooltip>
+            <ResetEstimateButton
+              orgSlug={orgSlug}
+              rfqParam={rfqParam}
+              rfqId={rfqId}
+              rfqStatus={rfqStatus}
+            />
 
             <div className="ml-auto flex items-center gap-2">
               <span className="text-sm font-medium text-[hsl(var(--muted-foreground))]">Qty:</span>
@@ -353,16 +675,29 @@ export function Calculator({ part, orgSlug, rfqParam, rfqId, partIds }: Calculat
               </button>
             </div>
           </div>
+        </div>
 
-          {/* Scrollable middle */}
-          <MaterialsSection quantities={qtyNumbers} cards={materials} setCards={setMaterials} />
+        {/* Scrollable body — materials/operations/notes scroll under the fixed header */}
+        <div className="flex-1 overflow-auto">
+          <MaterialsSection
+            quantities={qtyNumbers}
+            cards={materials}
+            onAdd={addMat}
+            onPatch={patchMat}
+            onDelete={deleteMat}
+            onCopy={copyMat}
+            onReorder={reorderMats}
+          />
           <OperationsSection
             quantities={qtyNumbers}
-            partAreaCm2={part.surfaceAreaIn2 * IN2_TO_CM2}
             operations={operations}
-            setOperations={setOperations}
+            onAdd={addOp}
+            onPatch={patchOp}
+            onDelete={deleteOp}
+            onCopy={copyOp}
+            onReorder={reorderOps}
           />
-          <NotesSection />
+          <NotesSection external={notesExternal} internal={notesInternal} onChange={changeNote} />
 
           {/* Sticky total row — pinned to the bottom of the scroll area */}
           <TotalRow materials={materials} operations={operations} quantities={qtyNumbers} />
@@ -380,6 +715,42 @@ export function Calculator({ part, orgSlug, rfqParam, rfqId, partIds }: Calculat
         />
       </div>
     </TooltipProvider>
+  );
+}
+
+/** Verbatim value as a coloured highlight pill. The colour is the field's
+ *  identity (field-identity.ts) — the same colour that will mark the field's
+ *  region on the PDF drawing. Falls back to neutral for unmapped fields. */
+function VerbatimPill({ field, text }: { field: string; text: string }) {
+  const c = FIELD_COLORS[field];
+  if (!c) {
+    return (
+      <span className="inline-block rounded px-2 py-0.5 italic text-[hsl(var(--muted-foreground))]">
+        {text}
+      </span>
+    );
+  }
+  return (
+    <span
+      className="inline-block rounded px-2 py-0.5 font-medium"
+      style={{ backgroundColor: c.fill, color: c.text }}
+    >
+      {text}
+    </span>
+  );
+}
+
+/** Source type as a plain, light-bg coloured pill (Technical Drawing / CAD Model /
+ *  Calculated), matching the reference styling. */
+function SourcePill({ source }: { source: SourceType }) {
+  const s = SOURCE_STYLES[source];
+  return (
+    <span
+      className="inline-block whitespace-nowrap rounded px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide"
+      style={{ backgroundColor: s.fill, color: s.text }}
+    >
+      {source}
+    </span>
   );
 }
 

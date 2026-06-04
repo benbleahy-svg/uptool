@@ -290,7 +290,19 @@
     "template_recently_used": "Zuletzt verwendet",
     "template_all": "Alle",
     "template_manual": "— Manuell eingeben —",
-    "no_templates": "Keine Vorlagen. Unter Einstellungen anlegen."
+    "no_templates": "Keine Vorlagen. Unter Einstellungen anlegen.",
+    "reset_tooltip": "Kalkulation zurücksetzen",
+    "reset_title": "Kalkulation dieser Anfrage zurücksetzen?",
+    "reset_body": "Dies löscht alle Arbeitsgänge, Materialien, Überschreibungen, Notizen und Angebotseinstellungen für jedes Teil dieser Anfrage. Dateien, KI-extrahierte Daten, Workflow-Auswahl und Mengen bleiben erhalten. Dies kann nicht rückgängig gemacht werden.",
+    "reset_sent_warning": "Das Angebot dieser Anfrage wurde bereits versendet. Beim Zurücksetzen wird das gespeicherte Angebot verworfen und die Anfrage auf eine neue Kalkulation zurückgesetzt.",
+    "reset_sent_confirm": "Mir ist bewusst, dass das Angebot bereits versendet wurde",
+    "reset_cancel": "Abbrechen",
+    "reset_confirm": "Kalkulation zurücksetzen",
+    "reset_toast": "Kalkulation zurückgesetzt",
+    "reset_error": "Kalkulation konnte nicht zurückgesetzt werden. Bitte erneut versuchen.",
+    "loading": "Kalkulation wird geladen…",
+    "saving": "Wird gespeichert…",
+    "save_failed": "Speichern fehlgeschlagen — deine letzte Änderung wurde rückgängig gemacht."
   },
   "quote": {
     "part": "Teil",

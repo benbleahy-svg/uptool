@@ -1,6 +1,6 @@
 "use client";
 
-import { type Operation, type OperationType, createOperation } from "@/lib/quoting/operationCost";
+import type { Operation, OperationType } from "@/lib/quoting/operationCost";
 import {
   DndContext,
   type DragEndEvent,
@@ -17,22 +17,19 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { Plus } from "lucide-react";
-import type * as React from "react";
 import { AddOperationPopover } from "./add-operation-popover";
 import { OperationRow } from "./operation-row";
 
-function resolveType(name: string): OperationType {
+/** Map a popover entry name to a client operation type. Unknown names (most of
+ *  the catalogue) fall back to a generic time-based op, which persists cleanly. */
+export function resolveType(name: string): OperationType {
   switch (name) {
     case "Programming":
       return "programming";
-    case "Laser Cutting":
-      return "laser-cutting";
     case "Deburr":
       return "deburr";
     case "Bending":
       return "bending";
-    case "Finishing (new)":
-      return "finishing";
     case "Inspection":
       return "inspection";
     case "CNC Milling":
@@ -44,85 +41,37 @@ function resolveType(name: string): OperationType {
   }
 }
 
-// Seed ops mirror 0_0: a mix of incomplete (red) and complete (priced) rows.
-export function seedOperations(partArea: number): Operation[] {
-  const laser = createOperation("laser-cutting");
-  laser.fields = {
-    material: "AS A36",
-    thickness: "0,12",
-    cutSpeed: "300",
-    pierceTime: "1",
-    cutLength: "55,09",
-    pierces: "43",
-    setupTime: "5",
-    cycleTime: "0,9",
-    laserType: "fiber",
-  };
-  const deburr = createOperation("deburr");
-  deburr.fields = { setupTime: "0", runTime: "5" };
-  const finishing = createOperation("finishing", { partArea });
-  finishing.fields = {
-    finishingProcess: "anodize",
-    minBatch: "100",
-    cost: "0,12",
-    partArea: partArea.toLocaleString("de-DE", { maximumFractionDigits: 2 }),
-  };
-
-  return [
-    { id: "op-1", ...createOperation("programming") },
-    { id: "op-2", ...laser },
-    { id: "op-3", ...deburr },
-    { id: "op-4", ...createOperation("bending") },
-    { id: "op-5", ...finishing },
-  ];
-}
-
 interface Props {
   quantities: number[];
-  partAreaCm2: number;
   operations: Operation[];
-  setOperations: React.Dispatch<React.SetStateAction<Operation[]>>;
+  onAdd: (name: string) => void;
+  onPatch: (id: string, patch: Partial<Operation>) => void;
+  onDelete: (id: string) => void;
+  onCopy: (id: string) => void;
+  onReorder: (orderedIds: string[]) => void;
 }
 
-export function OperationsSection({ quantities, partAreaCm2, operations, setOperations }: Props) {
+export function OperationsSection({
+  quantities,
+  operations,
+  onAdd,
+  onPatch,
+  onDelete,
+  onCopy,
+  onReorder,
+}: Props) {
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   );
 
-  function addOp(name: string) {
-    const base = createOperation(resolveType(name), { name, partArea: partAreaCm2 });
-    setOperations((prev) => [...prev, { id: crypto.randomUUID(), ...base }]);
-  }
-
-  function patchOp(id: string, patch: Partial<Operation>) {
-    setOperations((prev) => prev.map((o) => (o.id === id ? { ...o, ...patch } : o)));
-  }
-
-  function deleteOp(id: string) {
-    setOperations((prev) => prev.filter((o) => o.id !== id));
-  }
-
-  function copyOp(id: string) {
-    setOperations((prev) => {
-      const index = prev.findIndex((o) => o.id === id);
-      const original = prev[index];
-      if (!original) return prev;
-      const next = [...prev];
-      next.splice(index + 1, 0, { ...original, id: crypto.randomUUID() });
-      return next;
-    });
-  }
-
   function handleDragEnd(event: DragEndEvent) {
     const { active, over } = event;
     if (!over || active.id === over.id) return;
-    setOperations((prev) => {
-      const oldIndex = prev.findIndex((o) => o.id === active.id);
-      const newIndex = prev.findIndex((o) => o.id === over.id);
-      if (oldIndex === -1 || newIndex === -1) return prev;
-      return arrayMove(prev, oldIndex, newIndex);
-    });
+    const oldIndex = operations.findIndex((o) => o.id === active.id);
+    const newIndex = operations.findIndex((o) => o.id === over.id);
+    if (oldIndex === -1 || newIndex === -1) return;
+    onReorder(arrayMove(operations, oldIndex, newIndex).map((o) => o.id));
   }
 
   return (
@@ -130,7 +79,7 @@ export function OperationsSection({ quantities, partAreaCm2, operations, setOper
       <div className="flex items-center gap-2">
         <h2 className="text-sm font-bold text-gray-900">Operations</h2>
         <AddOperationPopover
-          onAdd={addOp}
+          onAdd={onAdd}
           align="start"
           trigger={
             <button
@@ -157,9 +106,9 @@ export function OperationsSection({ quantities, partAreaCm2, operations, setOper
                 key={op.id}
                 op={op}
                 quantities={quantities}
-                onChange={(patch) => patchOp(op.id, patch)}
-                onDelete={() => deleteOp(op.id)}
-                onCopy={() => copyOp(op.id)}
+                onChange={(patch) => onPatch(op.id, patch)}
+                onDelete={() => onDelete(op.id)}
+                onCopy={() => onCopy(op.id)}
               />
             ))}
             {operations.length === 0 && (

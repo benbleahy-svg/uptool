@@ -1,6 +1,6 @@
 import { db } from "@uptool/db";
 import { afterEach, describe, expect, test } from "vitest";
-import { NotFoundError, ValidationError, estimateService } from "../index";
+import { NotFoundError, ValidationError, estimateService, rfqService } from "../index";
 import { createOrg, createPart, createRfqWithPart, dropOrg } from "./helpers/fixtures";
 
 const createdOrgs: string[] = [];
@@ -245,5 +245,29 @@ describe("zod validation", () => {
         volumeDiscountTiers: [{ minQty: -1, discountPct: 5 }],
       }),
     ).rejects.toThrow(ValidationError);
+  });
+});
+
+describe("reset convergence (rfqService.resetEstimate)", () => {
+  test("clears operations, materials, hydration flag, and quote bulk", async () => {
+    const { orgId, rfqId, partId } = await setup();
+    await estimateService.hydratePartEstimate(orgId, partId);
+    await estimateService.updateRfqQuoteBulk(orgId, rfqId, { markupPct: 30, discountPct: 5 });
+
+    expect((await estimateService.listPartOperations(orgId, partId)).length).toBeGreaterThan(0);
+    expect((await estimateService.listPartMaterials(orgId, partId)).length).toBeGreaterThan(0);
+    const before = await readPart(partId);
+    expect(before?.estimateHydratedAt).toBeTruthy();
+
+    await rfqService.resetEstimate(orgId, rfqId);
+
+    expect(await estimateService.listPartOperations(orgId, partId)).toHaveLength(0);
+    expect(await estimateService.listPartMaterials(orgId, partId)).toHaveLength(0);
+    const part = await readPart(partId);
+    expect(part?.estimateHydratedAt).toBeNull(); // re-hydrates on next open
+    const rfq = await db.query.rfqs.findFirst({ where: (r, { eq }) => eq(r.id, rfqId) });
+    expect(rfq?.quoteBulkMarkupPct).toBeNull();
+    expect(rfq?.quoteBulkDiscountPct).toBeNull();
+    expect(rfq?.status).toBe("new");
   });
 });

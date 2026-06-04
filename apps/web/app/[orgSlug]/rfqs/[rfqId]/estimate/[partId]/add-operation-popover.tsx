@@ -4,14 +4,12 @@ import { Popover, PopoverContent, PopoverTrigger } from "@uptool/ui";
 import { CircleDollarSign, Clock, type LucideIcon, Search, SprayCan, Zap } from "lucide-react";
 import * as React from "react";
 
-const RECENTLY_USED = [
-  "Pack and Ship",
-  "Inspection",
-  "Finishing (new)",
-  "Deburr",
-  "CNC Milling",
-  "Programming",
-];
+// NOTE: "Laser Cutting" and "Finishing (new)" are intentionally omitted — their
+// rich type-specific field bags (cut speed, finishing process, …) have no DB
+// column in the time-based persisted model, so they can't be saved yet. They
+// return with the fields-jsonb epic (see ADR 0020). Every other entry resolves
+// to a generic time-based op (setup/run), which persists cleanly.
+const RECENTLY_USED = ["Pack and Ship", "Inspection", "Deburr", "CNC Milling", "Programming"];
 
 const ALL_OPS = [
   "Programming",
@@ -27,9 +25,8 @@ const ALL_OPS = [
   "Marking / Engraving",
   "formula",
   "Heat Treat",
-  "Laser Cutting",
+  // "Laser Cutting" + "Finishing (new)" omitted — see RECENTLY_USED note (ADR 0020).
   "Waterjet Cutting",
-  "Finishing (new)",
   "Hardware Operation",
   "EDM (wire)",
   "Grinding",

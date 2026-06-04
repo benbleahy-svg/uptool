@@ -24,6 +24,8 @@ interface FloatingFieldProps extends BaseProps {
   align?: "left" | "right";
   inputMode?: React.HTMLAttributes<HTMLInputElement>["inputMode"];
   placeholder?: string;
+  /** Render a filled value in blue to signal a user-entered value (operations). */
+  highlightFilled?: boolean;
 }
 
 export function FloatingField({
@@ -38,9 +40,11 @@ export function FloatingField({
   align = "left",
   inputMode,
   placeholder,
+  highlightFilled,
   className,
 }: FloatingFieldProps) {
   const invalid = !!required && value.trim() === "";
+  const filledBlue = highlightFilled && value.trim() !== "";
 
   return (
     <div
@@ -64,6 +68,7 @@ export function FloatingField({
             "w-full min-w-0 bg-transparent text-sm text-gray-900 outline-none placeholder:text-gray-400",
             align === "right" && "text-right",
             readOnly && "text-gray-500",
+            filledBlue && "font-medium text-blue-600",
           )}
         />
         {suffix && <span className="whitespace-nowrap text-sm text-gray-500">{suffix}</span>}

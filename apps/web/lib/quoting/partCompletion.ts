@@ -32,6 +32,13 @@ export function setPartStatus(rfqId: string, partId: string, status: PartStatus 
   window.dispatchEvent(new CustomEvent(EVENT));
 }
 
+/** Clear the whole RFQ's completion map (used by Reset estimate). */
+export function clearCompletion(rfqId: string): void {
+  if (typeof window === "undefined") return;
+  sessionStorage.removeItem(key(rfqId));
+  window.dispatchEvent(new CustomEvent(EVENT));
+}
+
 /** Reactive read of the completion map; updates on same-tab and cross-tab changes. */
 export function usePartCompletion(rfqId: string): CompletionMap {
   const [map, setMap] = React.useState<CompletionMap>({});
