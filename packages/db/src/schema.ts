@@ -591,6 +591,10 @@ export const quotes = pgTable(
   (t) => [index("idx_quotes_rfq").on(t.rfqId)],
 );
 
+// A quote is a flat list of line-item rows; MULTIPLE rows may reference the same
+// part (pricing tiers — the "copy row, change lead time + markup" behaviour). Cost
+// is a SNAPSHOT frozen at quote creation, not live-linked to the estimate. Discount
+// = negative markup (no separate discount field). See ADR 0022.
 export const quoteLineItems = pgTable(
   "quote_line_items",
   {
@@ -603,14 +607,33 @@ export const quoteLineItems = pgTable(
       .references(() => quotes.id, { onDelete: "cascade" }),
     partId: uuid("part_id").references(() => parts.id, { onDelete: "set null" }),
     quantity: integer("quantity").notNull(),
+    // Model's `estimateUnitCents`: a SNAPSHOT of the estimate unit cost frozen at
+    // quote creation (not live-linked to the estimate).
     costPerUnitCents: integer("cost_per_unit_cents").notNull().default(0),
-    markupPct: numeric("markup_pct").notNull().default("30"),
+    // Line markup %. Negative = discount (no separate discount field). No 0–100
+    // CHECK — negatives must be allowed.
+    markupPct: numeric("markup_pct", { precision: 6, scale: 2 }).notNull().default("0"),
+    // Model's `quoteUnitCents`: the computed quote unit price. Still NULLABLE — the
+    // PDF route computes it on the fly when null (Epic-2 "null = compute"). The
+    // services prompt will write it on save, drop that fallback, then tighten to
+    // NOT NULL.
     quoteUnitPriceCents: integer("quote_unit_price_cents"),
+    // Stored line total = quoteUnitPriceCents × quantity. Written by the service on
+    // save so it can't drift from the frozen snapshot.
+    quoteTotalCents: integer("quote_total_cents").notNull().default(0),
     leadTimeWeeks: integer("lead_time_weeks"),
+    // Optional per-tier label (multiple rows per part = pricing tiers).
+    tierLabel: text("tier_label"),
+    sortOrder: integer("sort_order").notNull().default(0),
     isNoBid: boolean("is_no_bid").notNull().default(false),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [index("idx_quote_line_items_quote").on(t.quoteId)],
+  (t) => [
+    index("idx_quote_line_items_quote").on(t.quoteId),
+    index("idx_quote_line_items_quote_sort").on(t.quoteId, t.sortOrder),
+    index("idx_quote_line_items_org").on(t.orgId),
+    index("idx_quote_line_items_part").on(t.partId),
+  ],
 );
 
 export const operationTemplates = pgTable(
