@@ -75,20 +75,47 @@ function extractGmailText(msg: GmailMessage): string {
   return "";
 }
 
-function extractGmailAttachments(msg: GmailMessage): Array<{
-  filename: string;
-  mimeType: string;
-  size: number;
-  data: string; // base64
-}> {
-  return (msg.payload.parts ?? [])
-    .filter((p) => p.filename && p.body?.attachmentId)
-    .map((p) => ({
-      filename: p.filename,
-      mimeType: p.mimeType,
-      size: p.body.size ?? 0,
-      data: p.body.data ?? "",
-    }));
+async function fetchGmailAttachmentData(
+  accessToken: string,
+  messageId: string,
+  attachmentId: string,
+): Promise<string> {
+  const res = await fetch(
+    `https://gmail.googleapis.com/gmail/v1/users/me/messages/${messageId}/attachments/${attachmentId}`,
+    { headers: { Authorization: `Bearer ${accessToken}` } },
+  );
+  if (!res.ok) throw new Error(`Gmail attachment fetch failed: ${res.status}`);
+  const data = (await res.json()) as { data?: string };
+  // Gmail returns the bytes base64url-encoded; normalise to standard base64 for
+  // the ingest path (which decodes with Buffer.from(dataBase64, "base64")).
+  return Buffer.from(data.data ?? "", "base64url").toString("base64");
+}
+
+async function extractGmailAttachments(
+  accessToken: string,
+  msg: GmailMessage,
+  log: typeof logger,
+): Promise<Array<{ filename: string; mimeType: string; size: number; data: string }>> {
+  // format=full returns only an attachmentId per part — the bytes must be
+  // fetched separately via users.messages.attachments.get.
+  const parts = (msg.payload.parts ?? []).filter((p) => p.filename && p.body?.attachmentId);
+  const out: Array<{ filename: string; mimeType: string; size: number; data: string }> = [];
+  for (const p of parts) {
+    try {
+      const data = await fetchGmailAttachmentData(
+        accessToken,
+        msg.id,
+        p.body.attachmentId as string,
+      );
+      out.push({ filename: p.filename, mimeType: p.mimeType, size: p.body.size ?? 0, data });
+    } catch (err) {
+      log.warn(
+        { err, filename: p.filename, messageId: msg.id },
+        "Gmail attachment fetch failed — skipping attachment",
+      );
+    }
+  }
+  return out;
 }
 
 export async function pollEmailAccountProcessor(job: Job<PollEmailAccountJobData>): Promise<void> {
@@ -148,7 +175,7 @@ export async function pollEmailAccountProcessor(job: Job<PollEmailAccountJobData
 
       for (const msgId of messageIds) {
         const msg = await fetchGmailMessage(accessToken, msgId);
-        const gmailAttachments = extractGmailAttachments(msg);
+        const gmailAttachments = await extractGmailAttachments(accessToken, msg, log);
 
         const jobData: IngestEmailJobData = {
           emailAccountId,

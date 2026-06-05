@@ -12,9 +12,16 @@ interface PostmarkInboundPayload {
   MessageID: string;
 }
 
+if (process.env.NODE_ENV === "production" && !process.env.POSTMARK_INBOUND_WEBHOOK_SECRET) {
+  console.warn(
+    "[postmark-inbound] POSTMARK_INBOUND_WEBHOOK_SECRET is unset in production — inbound webhook will reject all requests (401).",
+  );
+}
+
 function verifyWebhookSecret(req: NextRequest): boolean {
   const secret = process.env.POSTMARK_INBOUND_WEBHOOK_SECRET;
-  if (!secret) return true; // skip verification in dev when not configured
+  // Fail closed when the secret is unset, except in local dev where it's optional.
+  if (!secret) return process.env.NODE_ENV === "development";
   const header = req.headers.get("x-postmark-signature") ?? req.headers.get("authorization");
   return header === secret;
 }

@@ -74,8 +74,8 @@ export async function refreshGmailToken(accountId: string): Promise<string> {
   const tokens = await getDecryptedTokens(accountId);
   if (!tokens.refreshToken) throw new Error("No refresh token stored");
 
-  const clientId = process.env.AUTH_GOOGLE_ID ?? process.env.GOOGLE_CLIENT_ID;
-  const clientSecret = process.env.AUTH_GOOGLE_SECRET ?? process.env.GOOGLE_CLIENT_SECRET;
+  const clientId = process.env.AUTH_GOOGLE_ID;
+  const clientSecret = process.env.AUTH_GOOGLE_SECRET;
 
   const res = await fetch("https://oauth2.googleapis.com/token", {
     method: "POST",
