@@ -26,6 +26,8 @@ export interface SendViewProps {
   defaultTo: string;
   defaultSubject: string;
   defaultBody: string;
+  sendAccounts: Array<{ id: string; email: string; provider: string }>;
+  resolvedAccountId: string | null;
 }
 
 export function SendView(props: SendViewProps) {

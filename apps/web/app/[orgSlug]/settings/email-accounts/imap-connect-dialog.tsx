@@ -25,6 +25,11 @@ export interface ImapStrings {
   connecting: string;
   connect: string;
   connect_failed: string;
+  smtp_section: string;
+  smtp_server: string;
+  smtp_port: string;
+  smtp_tls: string;
+  smtp_password: string;
 }
 
 export function ImapConnectDialog({ orgSlug, strings }: { orgSlug: string; strings: ImapStrings }) {
@@ -39,6 +44,12 @@ export function ImapConnectDialog({ orgSlug, strings }: { orgSlug: string; strin
   const [portTouched, setPortTouched] = useState(false);
   const [password, setPassword] = useState("");
 
+  // Optional SMTP (send) settings.
+  const [smtpHost, setSmtpHost] = useState("");
+  const [smtpPort, setSmtpPort] = useState(465);
+  const [smtpTls, setSmtpTls] = useState(true);
+  const [smtpPassword, setSmtpPassword] = useState("");
+
   function reset() {
     setEmail("");
     setHost("");
@@ -46,6 +57,10 @@ export function ImapConnectDialog({ orgSlug, strings }: { orgSlug: string; strin
     setPort(993);
     setPortTouched(false);
     setPassword("");
+    setSmtpHost("");
+    setSmtpPort(465);
+    setSmtpTls(true);
+    setSmtpPassword("");
     setError(null);
   }
 
@@ -65,6 +80,11 @@ export function ImapConnectDialog({ orgSlug, strings }: { orgSlug: string; strin
         imapPort: port,
         imapTls: tls,
         password,
+        // SMTP is optional as a group — only send it when a host is provided.
+        smtpHost: smtpHost || undefined,
+        smtpPort: smtpHost ? smtpPort : undefined,
+        smtpTls: smtpHost ? smtpTls : undefined,
+        smtpPassword: smtpHost ? smtpPassword : undefined,
       });
       if (res.ok) {
         setOpen(false);
@@ -154,6 +174,54 @@ export function ImapConnectDialog({ orgSlug, strings }: { orgSlug: string; strin
               onChange={(e) => setPassword(e.target.value)}
             />
           </div>
+
+          <fieldset className="space-y-3 border-t border-[hsl(var(--border))] pt-3">
+            <legend className="text-xs font-medium text-[hsl(var(--muted-foreground))]">
+              {strings.smtp_section}
+            </legend>
+            <div className="space-y-1.5">
+              <Label htmlFor="smtp-host">{strings.smtp_server}</Label>
+              <Input
+                id="smtp-host"
+                type="text"
+                placeholder="smtp.example.com"
+                value={smtpHost}
+                onChange={(e) => setSmtpHost(e.target.value)}
+              />
+            </div>
+            <div className="flex items-end gap-4">
+              <div className="space-y-1.5 w-28">
+                <Label htmlFor="smtp-port">{strings.smtp_port}</Label>
+                <Input
+                  id="smtp-port"
+                  type="number"
+                  min={1}
+                  max={65535}
+                  value={smtpPort}
+                  onChange={(e) => setSmtpPort(Number(e.target.value))}
+                />
+              </div>
+              <label className="flex items-center gap-2 text-sm pb-2.5 select-none">
+                <input
+                  type="checkbox"
+                  checked={smtpTls}
+                  onChange={(e) => setSmtpTls(e.target.checked)}
+                  className="h-4 w-4 rounded border-[hsl(var(--border))]"
+                />
+                {strings.smtp_tls}
+              </label>
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="smtp-password">{strings.smtp_password}</Label>
+              <Input
+                id="smtp-password"
+                type="password"
+                required={smtpHost !== ""}
+                value={smtpPassword}
+                onChange={(e) => setSmtpPassword(e.target.value)}
+              />
+            </div>
+          </fieldset>
 
           {error && <p className="text-sm text-red-600">{error}</p>}
 

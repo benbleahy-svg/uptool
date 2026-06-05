@@ -2,13 +2,14 @@ import { getTranslations } from "next-intl/server";
 import { db } from "@uptool/db";
 import { notFound, redirect } from "next/navigation";
 import { auth } from "@/auth";
-import { emailAccountService, blockListService } from "@uptool/services";
+import { emailAccountService, blockListService, memberService } from "@uptool/services";
 import {
   addBlockListEntry,
   connectGoogleAccount,
   connectMicrosoftAccount,
   removeBlockListEntry,
 } from "./actions";
+import { AccountControls } from "./account-controls";
 import { DisconnectButton } from "./disconnect-button";
 import { ForwardingAddressSection } from "./forwarding-address-section";
 import { ImapConnectDialog } from "./imap-connect-dialog";
@@ -30,9 +31,10 @@ export default async function EmailAccountsPage({ params, searchParams }: Props)
   });
   if (!org) notFound();
 
-  const [accounts, blockEntries] = await Promise.all([
+  const [accounts, blockEntries, members] = await Promise.all([
     emailAccountService.findByOrg(org.id),
     blockListService.findByOrg(org.id),
+    memberService.listForOrg(org.id),
   ]);
 
   const t = await getTranslations("settings");
@@ -89,6 +91,11 @@ export default async function EmailAccountsPage({ params, searchParams }: Props)
               connecting: t("imap.connecting"),
               connect: t("imap.connect"),
               connect_failed: t("imap.connect_failed"),
+              smtp_section: t("imap.smtp_section"),
+              smtp_server: t("imap.smtp_server"),
+              smtp_port: t("imap.smtp_port"),
+              smtp_tls: t("imap.smtp_tls"),
+              smtp_password: t("imap.smtp_password"),
             }}
           />
         </div>
@@ -114,20 +121,59 @@ export default async function EmailAccountsPage({ params, searchParams }: Props)
                     </div>
                     <div>
                       <p className="text-sm font-medium">{account.email}</p>
-                      <p className="text-xs text-[hsl(var(--muted-foreground))]">
-                        {account.status === "error"
-                          ? t("email_accounts.status_error")
-                          : t("email_accounts.status_connected")}{" "}
+                      <p className="text-xs text-[hsl(var(--muted-foreground))] flex items-center gap-1.5">
+                        {account.status === "reconnect_required" ? (
+                          <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-800">
+                            {t("email_accounts.reconnect_required")}
+                          </span>
+                        ) : (
+                          <span>
+                            {account.status === "error"
+                              ? t("email_accounts.status_error")
+                              : t("email_accounts.status_connected")}
+                          </span>
+                        )}
                         · {account.createdAt.toLocaleDateString()}
                       </p>
                     </div>
                   </div>
-                  <DisconnectButton
-                    accountId={account.id}
-                    orgSlug={orgSlug}
-                    label={t("email_accounts.disconnect")}
-                    confirmText={t("email_accounts.disconnect_confirm")}
-                  />
+                  <div className="flex items-center gap-3">
+                    <AccountControls
+                      orgSlug={orgSlug}
+                      accountId={account.id}
+                      ownerUserId={account.ownerUserId}
+                      isDefaultSend={account.isDefaultSend}
+                      members={members.map((m) => ({
+                        userId: m.userId,
+                        name: m.name,
+                        email: m.email,
+                      }))}
+                      ownerLabel={t("email_accounts.owner")}
+                      unassignedLabel={t("email_accounts.unassigned")}
+                      defaultSendLabel={t("email_accounts.default_send")}
+                    />
+                    {account.status === "reconnect_required" && account.provider !== "imap" && (
+                      <form
+                        action={(account.provider === "microsoft"
+                          ? connectMicrosoftAccount
+                          : connectGoogleAccount
+                        ).bind(null, orgSlug)}
+                      >
+                        <button
+                          type="submit"
+                          className="rounded-md border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs font-medium text-amber-800 hover:bg-amber-100 transition-colors"
+                        >
+                          {t("email_accounts.reconnect")}
+                        </button>
+                      </form>
+                    )}
+                    <DisconnectButton
+                      accountId={account.id}
+                      orgSlug={orgSlug}
+                      label={t("email_accounts.disconnect")}
+                      confirmText={t("email_accounts.disconnect_confirm")}
+                    />
+                  </div>
                 </li>
               ))}
             </ul>

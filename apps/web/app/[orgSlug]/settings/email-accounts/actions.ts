@@ -75,13 +75,23 @@ export async function connectGoogleAccount(orgSlug: string) {
   redirect(`https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`);
 }
 
-const imapInputSchema = z.object({
-  email: z.string().email(),
-  imapHost: z.string().trim().min(1),
-  imapPort: z.number().int().min(1).max(65535),
-  imapTls: z.boolean(),
-  password: z.string().min(1),
-});
+const imapInputSchema = z
+  .object({
+    email: z.string().email(),
+    imapHost: z.string().trim().min(1),
+    imapPort: z.number().int().min(1).max(65535),
+    imapTls: z.boolean(),
+    password: z.string().min(1),
+    // Optional SMTP (send) group.
+    smtpHost: z.string().trim().optional(),
+    smtpPort: z.number().int().min(1).max(65535).optional(),
+    smtpTls: z.boolean().optional(),
+    smtpPassword: z.string().optional(),
+  })
+  // If an SMTP host is given, port + password are required as a group.
+  .refine((v) => !v.smtpHost || (v.smtpPort != null && !!v.smtpPassword), {
+    message: "smtp_incomplete",
+  });
 
 export type ConnectImapResult = { ok: true } | { ok: false; error: "invalid" | "connect_failed" };
 
@@ -94,7 +104,8 @@ export async function connectImapAction(
 
   const parsed = imapInputSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: "invalid" };
-  const { email, imapHost, imapPort, imapTls, password } = parsed.data;
+  const { email, imapHost, imapPort, imapTls, password, smtpHost, smtpPort, smtpTls, smtpPassword } =
+    parsed.data;
 
   // Verify credentials BEFORE persisting — never save a config that can't connect.
   try {
@@ -112,10 +123,28 @@ export async function connectImapAction(
     imapPort,
     imapTls,
     password,
+    smtpHost: smtpHost || undefined,
+    smtpPort,
+    smtpTls,
+    smtpPassword: smtpPassword || undefined,
   });
 
   revalidatePath(`/${orgSlug}/settings/email-accounts`);
   return { ok: true };
+}
+
+export async function setOwnerAction(orgSlug: string, accountId: string, ownerUserId: string | null) {
+  const { userId } = await requireAuth();
+  const org = await resolveOrg(orgSlug, userId);
+  await emailAccountService.setOwner(accountId, org.id, ownerUserId);
+  revalidatePath(`/${orgSlug}/settings/email-accounts`);
+}
+
+export async function setDefaultSendAction(orgSlug: string, accountId: string) {
+  const { userId } = await requireAuth();
+  const org = await resolveOrg(orgSlug, userId);
+  await emailAccountService.setDefaultSend(accountId, org.id);
+  revalidatePath(`/${orgSlug}/settings/email-accounts`);
 }
 
 export async function disconnectEmailAccount(formData: FormData) {

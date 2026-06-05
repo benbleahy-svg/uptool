@@ -1,6 +1,7 @@
+import { auth } from "@/auth";
 import { resolveRfq } from "@/lib/resolve-rfq";
 import { db } from "@uptool/db";
-import { quoteService } from "@uptool/services";
+import { listSendableAccounts, quoteService, resolveSendAccount } from "@uptool/services";
 import { getTranslations } from "next-intl/server";
 import { notFound } from "next/navigation";
 import { SendView } from "./send-view";
@@ -22,6 +23,13 @@ export default async function SendPage({ params }: Props) {
 
   const current = await quoteService.getCurrentQuote(org.id, rfq.id);
   const t = await getTranslations("send");
+
+  const session = await auth();
+  const userId = session?.user?.id;
+  const [sendable, resolved] = await Promise.all([
+    listSendableAccounts(org.id, rfq.id, userId),
+    resolveSendAccount(org.id, rfq.id, userId),
+  ]);
 
   if (!current) {
     return (
@@ -52,6 +60,8 @@ export default async function SendPage({ params }: Props) {
       defaultTo={rfq.contact?.email ?? ""}
       defaultSubject={`Angebot #${current.quoteNumber}${rfq.subject ? ` — ${rfq.subject}` : ""}`}
       defaultBody={defaultBody}
+      sendAccounts={sendable.map((a) => ({ id: a.id, email: a.email, provider: a.provider }))}
+      resolvedAccountId={resolved?.id ?? null}
     />
   );
 }

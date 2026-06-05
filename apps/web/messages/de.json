@@ -121,7 +121,12 @@
       "status_connected": "Verbunden",
       "status_error": "Fehler",
       "no_accounts": "Noch keine E-Mail-Konten verbunden.",
-      "first_check_info": "Die erste Prüfung erfolgt innerhalb weniger Minuten."
+      "first_check_info": "Die erste Prüfung erfolgt innerhalb weniger Minuten.",
+      "owner": "Besitzer",
+      "unassigned": "Nicht zugewiesen",
+      "default_send": "Standard-Sendekonto",
+      "reconnect_required": "Neu verbinden erforderlich",
+      "reconnect": "Neu verbinden"
     },
     "imap": {
       "button": "Anderes Konto (IMAP)",
@@ -133,7 +138,12 @@
       "password": "Passwort",
       "connecting": "Verbinde…",
       "connect": "Verbinden",
-      "connect_failed": "Verbindung fehlgeschlagen — bitte Server und Zugangsdaten prüfen."
+      "connect_failed": "Verbindung fehlgeschlagen — bitte Server und Zugangsdaten prüfen.",
+      "smtp_section": "SMTP (Senden) — optional",
+      "smtp_server": "SMTP-Server",
+      "smtp_port": "Port",
+      "smtp_tls": "SSL/TLS verwenden",
+      "smtp_password": "SMTP-Passwort"
     },
     "members": {
       "title": "Mitglieder",
@@ -383,6 +393,9 @@
     "to": "An",
     "subject": "Betreff",
     "body": "Nachricht",
+    "sending_from": "Senden von",
+    "no_send_account": "Kein verbundenes E-Mail-Konto. Verbinden Sie eines in den Einstellungen.",
+    "go_to_settings": "Zu den Einstellungen",
     "send_quote": "Angebot senden",
     "sent_at": "Gesendet am {date}",
     "no_quote_to_send": "Kein Angebot zum Senden vorhanden.",

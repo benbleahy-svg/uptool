@@ -17,7 +17,11 @@ export { syncAccountPolls, POLL_INTERVAL_MS } from "./email-poll-scheduler";
 export { testImapConnection, pollImapMailbox, ImapConnectionError } from "./imap";
 export type { ImapConfig } from "./imap";
 export type { ConnectImapInput } from "./email-account";
-export { resolveSendAccount, QuoteNoSendAccountError } from "./send-account-resolver";
+export {
+  resolveSendAccount,
+  listSendableAccounts,
+  QuoteNoSendAccountError,
+} from "./send-account-resolver";
 export type { EmailAccount } from "./send-account-resolver";
 export {
   getSendAdapter,

@@ -121,7 +121,12 @@
       "status_connected": "Connected",
       "status_error": "Error",
       "no_accounts": "No email accounts connected yet.",
-      "first_check_info": "The first check will happen within a few minutes."
+      "first_check_info": "The first check will happen within a few minutes.",
+      "owner": "Owner",
+      "unassigned": "Unassigned",
+      "default_send": "Default send account",
+      "reconnect_required": "Reconnect required",
+      "reconnect": "Reconnect"
     },
     "imap": {
       "button": "Other (IMAP)",
@@ -133,7 +138,12 @@
       "password": "Password",
       "connecting": "Connecting…",
       "connect": "Connect",
-      "connect_failed": "Could not connect — check your server and credentials."
+      "connect_failed": "Could not connect — check your server and credentials.",
+      "smtp_section": "SMTP (sending) — optional",
+      "smtp_server": "SMTP server",
+      "smtp_port": "Port",
+      "smtp_tls": "Use SSL/TLS",
+      "smtp_password": "SMTP password"
     },
     "members": {
       "title": "Members",
@@ -383,6 +393,9 @@
     "to": "To",
     "subject": "Subject",
     "body": "Message",
+    "sending_from": "Sending from",
+    "no_send_account": "No connected email account. Connect one in Settings.",
+    "go_to_settings": "Go to Settings",
     "send_quote": "Send quote",
     "sent_at": "Sent on {date}",
     "no_quote_to_send": "No quote to send.",

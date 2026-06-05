@@ -18,6 +18,7 @@ import {
   toast,
 } from "@uptool/ui";
 import { useTranslations } from "next-intl";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import * as React from "react";
 import { createQuoteRevisionAction, sendQuoteAction } from "./actions";
@@ -36,6 +37,8 @@ export function SendClient({
   defaultTo,
   defaultSubject,
   defaultBody,
+  sendAccounts,
+  resolvedAccountId,
 }: SendViewProps) {
   const t = useTranslations("send");
   const router = useRouter();
@@ -45,6 +48,12 @@ export function SendClient({
   const [body, setBody] = React.useState(defaultBody);
   const [sending, setSending] = React.useState(false);
   const [confirmOpen, setConfirmOpen] = React.useState(false);
+  const [fromAccountId, setFromAccountId] = React.useState(
+    resolvedAccountId ?? sendAccounts[0]?.id ?? "",
+  );
+
+  // No connected account can send → block the composer entirely.
+  const blocked = sendAccounts.length === 0;
 
   const [pdf, setPdf] = React.useState<{ url: string; blob: Blob } | null>(null);
   const [pdfError, setPdfError] = React.useState(false);
@@ -80,14 +89,22 @@ export function SendClient({
 
   async function doSend() {
     setSending(true);
-    const res = await sendQuoteAction({ orgSlug, rfqParam, rfqId, to, subject, body });
+    const res = await sendQuoteAction({
+      orgSlug,
+      rfqParam,
+      rfqId,
+      to,
+      subject,
+      body,
+      overrideSendAccountId: fromAccountId || undefined,
+    });
     setSending(false);
     setConfirmOpen(false);
     if (res.ok) {
       toast.success(t("sent"));
       router.refresh();
     } else {
-      toast.error(t("send_failed"));
+      toast.error(res.error === "no_send_account" ? t("no_send_account") : t("send_failed"));
     }
   }
 
@@ -130,7 +147,31 @@ export function SendClient({
           </div>
         )}
 
+        {blocked ? (
+          <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-4 text-sm text-amber-900">
+            <p>{t("no_send_account")}</p>
+            <Link
+              href={`/${orgSlug}/settings/email-accounts`}
+              className="mt-2 inline-block font-medium underline"
+            >
+              {t("go_to_settings")}
+            </Link>
+          </div>
+        ) : (
         <div className="space-y-4">
+          <Labelled label={t("sending_from")}>
+            <select
+              value={fromAccountId}
+              onChange={(e) => setFromAccountId(e.target.value)}
+              className="w-full rounded border border-gray-200 px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-[hsl(var(--ring))]"
+            >
+              {sendAccounts.map((a) => (
+                <option key={a.id} value={a.id}>
+                  {a.email}
+                </option>
+              ))}
+            </select>
+          </Labelled>
           <Labelled label={t("to")}>
             <input
               type="email"
@@ -194,6 +235,7 @@ export function SendClient({
             )}
           </div>
         </div>
+        )}
       </aside>
     </div>
   );

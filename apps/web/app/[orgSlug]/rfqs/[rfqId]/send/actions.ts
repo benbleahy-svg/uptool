@@ -3,7 +3,7 @@
 import { requireAuth } from "@/lib/auth";
 import { renderQuoteDocPdf } from "@/lib/quoting/render-quote-pdf";
 import { db } from "@uptool/db";
-import { quoteService } from "@uptool/services";
+import { QuoteNoSendAccountError, quoteService } from "@uptool/services";
 import { revalidatePath } from "next/cache";
 
 async function getOrgId(orgSlug: string, userId: string): Promise<string> {
@@ -51,6 +51,7 @@ export async function sendQuoteAction(i: {
   to: string;
   subject: string;
   body: string;
+  overrideSendAccountId?: string;
 }) {
   return run(
     i.orgSlug,
@@ -66,8 +67,11 @@ export async function sendQuoteAction(i: {
           body: i.body,
           pdfBase64: pdf.buffer.toString("base64"),
           userId,
+          overrideSendAccountId: i.overrideSendAccountId,
         });
       } catch (e) {
+        // Distinguish "nothing can send" from a transport failure (locale map).
+        if (e instanceof QuoteNoSendAccountError) throw new Error("no_send_account");
         console.error("[sendQuoteAction] send failed", e);
         throw new Error("send_failed");
       }

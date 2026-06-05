@@ -22,6 +22,12 @@ export interface ConnectImapInput {
   imapPort: number;
   imapTls: boolean;
   password: string;
+  // Optional SMTP (send) settings. If smtpHost is set, smtpPort + smtpPassword
+  // are required (enforced by the caller/action).
+  smtpHost?: string;
+  smtpPort?: number;
+  smtpTls?: boolean;
+  smtpPassword?: string;
 }
 
 export const emailAccountService = {
@@ -65,6 +71,12 @@ export const emailAccountService = {
   },
 
   async connectImap(input: ConnectImapInput) {
+    const smtp = {
+      smtpHost: input.smtpHost ?? null,
+      smtpPort: input.smtpPort ?? null,
+      smtpTls: input.smtpTls ?? true,
+      smtpPassword: input.smtpPassword ? encrypt(input.smtpPassword) : null,
+    };
     const [account] = await db
       .insert(emailAccounts)
       .values({
@@ -77,6 +89,7 @@ export const emailAccountService = {
         imapPassword: encrypt(input.password),
         status: "connected",
         authorizedByUserId: input.userId,
+        ...smtp,
       })
       .onConflictDoUpdate({
         target: [emailAccounts.orgId, emailAccounts.email],
@@ -93,6 +106,7 @@ export const emailAccountService = {
           accessToken: null,
           refreshToken: null,
           tokenExpiresAt: null,
+          ...smtp,
         },
       })
       .returning();
@@ -150,5 +164,30 @@ export const emailAccountService = {
     } catch (err) {
       console.error("Failed to cancel poll scheduler for account", accountId, err);
     }
+  },
+
+  /** Assign (or clear, with null) the send-as owner for an account. */
+  async setOwner(accountId: string, orgId: string, ownerUserId: string | null) {
+    await db
+      .update(emailAccounts)
+      .set({ ownerUserId })
+      .where(and(eq(emailAccounts.id, accountId), eq(emailAccounts.orgId, orgId)));
+  },
+
+  /**
+   * Make an account the org's default send account. Clears the prior default in
+   * the same transaction so the partial unique index (one default per org) holds.
+   */
+  async setDefaultSend(accountId: string, orgId: string) {
+    await db.transaction(async (tx) => {
+      await tx
+        .update(emailAccounts)
+        .set({ isDefaultSend: false })
+        .where(and(eq(emailAccounts.orgId, orgId), eq(emailAccounts.isDefaultSend, true)));
+      await tx
+        .update(emailAccounts)
+        .set({ isDefaultSend: true })
+        .where(and(eq(emailAccounts.id, accountId), eq(emailAccounts.orgId, orgId)));
+    });
   },
 };

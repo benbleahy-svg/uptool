@@ -1,7 +1,7 @@
 import { db, rfqs, users } from "@uptool/db";
 import { eq } from "drizzle-orm";
 import { afterEach, describe, expect, test } from "vitest";
-import { resolveSendAccount } from "../index";
+import { emailAccountService, listSendableAccounts, resolveSendAccount } from "../index";
 import { createOrg, createRfqWithPart, createSendAccount, dropOrg } from "./helpers/fixtures";
 
 const createdOrgs: string[] = [];
@@ -108,5 +108,42 @@ describe("resolveSendAccount chain", () => {
 
     const acc = await resolveSendAccount(orgId, rfqId, userId);
     expect(acc?.id).toBe(def);
+  });
+});
+
+describe("listSendableAccounts", () => {
+  test("chain-ordered: owned first, then org default", async () => {
+    const { orgId, rfqId } = await setup();
+    const userId = await mkUser();
+    const owned = await createSendAccount(orgId, { ownerUserId: userId, isDefaultSend: false });
+    const def = await createSendAccount(orgId, { isDefaultSend: true });
+
+    const list = await listSendableAccounts(orgId, rfqId, userId);
+    expect(list.map((a) => a.id)).toEqual([owned, def]);
+  });
+
+  test("dedupes an account that matches multiple chain sources", async () => {
+    const { orgId, rfqId } = await setup();
+    const userId = await mkUser();
+    const both = await createSendAccount(orgId, { ownerUserId: userId, isDefaultSend: true });
+
+    const list = await listSendableAccounts(orgId, rfqId, userId);
+    expect(list.map((a) => a.id)).toEqual([both]);
+  });
+});
+
+describe("setDefaultSend", () => {
+  test("clears the previous org default (partial unique index holds)", async () => {
+    const { orgId } = await setup();
+    const a = await createSendAccount(orgId, { isDefaultSend: true });
+    const b = await createSendAccount(orgId, { isDefaultSend: false });
+
+    await emailAccountService.setDefaultSend(b, orgId);
+
+    const rows = await db.query.emailAccounts.findMany({
+      where: (e, { eq: eqf }) => eqf(e.orgId, orgId),
+    });
+    expect(rows.filter((r) => r.isDefaultSend).map((r) => r.id)).toEqual([b]);
+    expect(rows.find((r) => r.id === a)?.isDefaultSend).toBe(false);
   });
 });

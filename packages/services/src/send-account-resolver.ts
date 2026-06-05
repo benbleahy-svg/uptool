@@ -64,3 +64,58 @@ export async function resolveSendAccount(
   // 4. None.
   return null;
 }
+
+/**
+ * The deduped, chain-ordered list of accounts the user may send from: their own
+ * (RFQ-linked first), then the RFQ-linked account, then the org default — all
+ * connected. resolveSendAccount returns the first of this list; the UI uses the
+ * full list for the "Sending from" override dropdown.
+ */
+export async function listSendableAccounts(
+  orgId: string,
+  rfqId: string,
+  userId?: string,
+): Promise<EmailAccount[]> {
+  const rfq = await db.query.rfqs.findFirst({
+    where: (r, { and, eq }) => and(eq(r.id, rfqId), eq(r.orgId, orgId)),
+    columns: { emailAccountId: true },
+  });
+  const rfqAccountId = rfq?.emailAccountId ?? null;
+
+  const out: EmailAccount[] = [];
+  const seen = new Set<string>();
+  const push = (a?: EmailAccount | null) => {
+    if (a && !seen.has(a.id)) {
+      seen.add(a.id);
+      out.push(a);
+    }
+  };
+
+  if (userId) {
+    const owned = await db.query.emailAccounts.findMany({
+      where: (a, { and, eq }) =>
+        and(eq(a.orgId, orgId), eq(a.ownerUserId, userId), eq(a.status, "connected")),
+      orderBy: (a, { asc }) => [asc(a.createdAt)],
+    });
+    if (rfqAccountId) push(owned.find((a) => a.id === rfqAccountId));
+    for (const a of owned) push(a);
+  }
+
+  if (rfqAccountId) {
+    push(
+      await db.query.emailAccounts.findFirst({
+        where: (a, { and, eq }) =>
+          and(eq(a.id, rfqAccountId), eq(a.orgId, orgId), eq(a.status, "connected")),
+      }),
+    );
+  }
+
+  push(
+    await db.query.emailAccounts.findFirst({
+      where: (a, { and, eq }) =>
+        and(eq(a.orgId, orgId), eq(a.isDefaultSend, true), eq(a.status, "connected")),
+    }),
+  );
+
+  return out;
+}

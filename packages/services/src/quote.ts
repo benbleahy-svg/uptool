@@ -263,13 +263,31 @@ export const quoteService = {
   async sendQuote(
     orgId: string,
     rfqId: string,
-    input: { to: string; subject: string; body: string; pdfBase64: string; userId?: string },
+    input: {
+      to: string;
+      subject: string;
+      body: string;
+      pdfBase64: string;
+      userId?: string;
+      /** Explicit account to send from; validated against org + connected. */
+      overrideSendAccountId?: string;
+    },
   ): Promise<void> {
     // The same quote the send page shows + whose PDF the caller attached.
     const quote = await this.getCurrentQuote(orgId, rfqId);
     if (!quote) throw new NotFoundError("No quote to send");
 
-    const account = await resolveSendAccount(orgId, rfqId, input.userId);
+    // Explicit override (validated) takes precedence over the resolver chain.
+    const account = input.overrideSendAccountId
+      ? ((await db.query.emailAccounts.findFirst({
+          where: (a, { and, eq: e }) =>
+            and(
+              e(a.id, input.overrideSendAccountId as string),
+              e(a.orgId, orgId),
+              e(a.status, "connected"),
+            ),
+        })) ?? null)
+      : await resolveSendAccount(orgId, rfqId, input.userId);
     if (!account) throw new QuoteNoSendAccountError();
 
     // Thread context: reply onto the RFQ's existing email thread when present;
