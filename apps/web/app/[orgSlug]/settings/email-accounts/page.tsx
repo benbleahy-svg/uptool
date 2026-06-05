@@ -151,6 +151,7 @@ export default async function EmailAccountsPage({ params, searchParams }: Props)
                       ownerLabel={t("email_accounts.owner")}
                       unassignedLabel={t("email_accounts.unassigned")}
                       defaultSendLabel={t("email_accounts.default_send")}
+                      setDefaultSendLabel={t("email_accounts.set_default_send")}
                     />
                     {account.status === "reconnect_required" && account.provider !== "imap" && (
                       <form

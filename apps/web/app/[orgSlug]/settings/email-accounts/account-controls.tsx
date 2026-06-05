@@ -1,5 +1,6 @@
 "use client";
 
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@uptool/ui";
 import { useTransition } from "react";
 import { setDefaultSendAction, setOwnerAction } from "./actions";
 
@@ -17,7 +18,10 @@ interface Props {
   members: Member[];
   ownerLabel: string;
   unassignedLabel: string;
+  /** Tooltip when this account is already the default send account. */
   defaultSendLabel: string;
+  /** Tooltip when it is not — clicking sets it as default. */
+  setDefaultSendLabel: string;
 }
 
 export function AccountControls({
@@ -29,6 +33,7 @@ export function AccountControls({
   ownerLabel,
   unassignedLabel,
   defaultSendLabel,
+  setDefaultSendLabel,
 }: Props) {
   const [pending, startTransition] = useTransition();
 
@@ -50,19 +55,25 @@ export function AccountControls({
           </option>
         ))}
       </select>
-      <button
-        type="button"
-        title={defaultSendLabel}
-        aria-label={defaultSendLabel}
-        aria-pressed={isDefaultSend}
-        disabled={pending}
-        onClick={() => startTransition(() => setDefaultSendAction(orgSlug, accountId))}
-        className={`text-lg leading-none disabled:opacity-50 ${
-          isDefaultSend ? "text-amber-500" : "text-gray-300 hover:text-amber-400"
-        }`}
-      >
-        {isDefaultSend ? "★" : "☆"}
-      </button>
+      <TooltipProvider>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              type="button"
+              aria-label={isDefaultSend ? defaultSendLabel : setDefaultSendLabel}
+              aria-pressed={isDefaultSend}
+              disabled={pending}
+              onClick={() => startTransition(() => setDefaultSendAction(orgSlug, accountId))}
+              className={`text-lg leading-none disabled:opacity-50 ${
+                isDefaultSend ? "text-amber-500" : "text-gray-300 hover:text-amber-400"
+              }`}
+            >
+              {isDefaultSend ? "★" : "☆"}
+            </button>
+          </TooltipTrigger>
+          <TooltipContent>{isDefaultSend ? defaultSendLabel : setDefaultSendLabel}</TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
     </div>
   );
 }

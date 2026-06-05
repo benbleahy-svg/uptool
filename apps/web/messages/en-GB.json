@@ -125,6 +125,7 @@
       "owner": "Owner",
       "unassigned": "Unassigned",
       "default_send": "Default send account",
+      "set_default_send": "Set as default send account",
       "reconnect_required": "Reconnect required",
       "reconnect": "Reconnect"
     },

@@ -125,6 +125,7 @@
       "owner": "Besitzer",
       "unassigned": "Nicht zugewiesen",
       "default_send": "Standard-Sendekonto",
+      "set_default_send": "Als Standard-Sendekonto festlegen",
       "reconnect_required": "Neu verbinden erforderlich",
       "reconnect": "Neu verbinden"
     },

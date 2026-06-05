@@ -12,7 +12,7 @@ import {
   rfqs,
 } from "@uptool/db";
 import { withOrgContext } from "@uptool/db";
-import { isManufacturingFile } from "@uptool/shared";
+import { attachmentCategory, isManufacturingFile } from "@uptool/shared";
 import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import { customerService } from "./customer";
 import { storageService } from "./storage";
@@ -125,6 +125,7 @@ export const rfqService = {
           contentType: file.contentType,
           sizeBytes: file.sizeBytes,
           storageKey,
+          category: attachmentCategory(file.filename),
         });
       }
 
