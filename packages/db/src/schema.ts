@@ -12,6 +12,7 @@ import {
   primaryKey,
   text,
   timestamp,
+  uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
@@ -171,7 +172,11 @@ export const emailAccounts = pgTable(
     }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [index("idx_email_accounts_org").on(t.orgId)],
+  (t) => [
+    index("idx_email_accounts_org").on(t.orgId),
+    // Backs emailAccountService.connect()'s onConflictDoUpdate target [orgId, email].
+    uniqueIndex("uniq_email_accounts_org_email").on(t.orgId, t.email),
+  ],
 );
 
 export const customerSourceEnum = pgEnum("customer_source", [

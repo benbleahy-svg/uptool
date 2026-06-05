@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX "uniq_email_accounts_org_email" ON "email_accounts" USING btree ("org_id","email");

@@ -169,6 +169,13 @@
       "when": 1780560353965,
       "tag": "0023_parts_hierarchy",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1780652692397,
+      "tag": "0024_furry_gorgon",
+      "breakpoints": true
     }
   ]
 }
