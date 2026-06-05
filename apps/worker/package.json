@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "tsx watch --env-file=../../.env src/index.ts",
     "build": "tsc",
-    "start": "node dist/index.js",
+    "start": "tsx --env-file=../../.env src/index.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
@@ -18,11 +18,11 @@
     "occt-import-js": "0.0.22",
     "pino": "^9.6.0",
     "pino-pretty": "^13.0.0",
-    "playwright": "^1.60.0"
+    "playwright": "^1.60.0",
+    "tsx": "^4.19.2"
   },
   "devDependencies": {
     "@types/node": "^22.10.1",
-    "tsx": "^4.19.2",
     "typescript": "~5.7.3"
   }
 }
