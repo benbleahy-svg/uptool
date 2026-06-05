@@ -21,6 +21,16 @@ export async function getDecryptedTokens(accountId: string): Promise<TokenSet> {
   };
 }
 
+/** Decrypt the stored IMAP password for an account (encrypted at rest). */
+export async function getDecryptedImapPassword(accountId: string): Promise<string> {
+  const account = await db.query.emailAccounts.findFirst({
+    where: (a, { eq }) => eq(a.id, accountId),
+  });
+  if (!account) throw new Error(`Email account ${accountId} not found`);
+  if (!account.imapPassword) throw new Error(`Email account ${accountId} has no IMAP password`);
+  return decrypt(account.imapPassword);
+}
+
 export async function saveEncryptedTokens(
   accountId: string,
   tokens: { accessToken: string; refreshToken?: string; expiresAt?: Date },

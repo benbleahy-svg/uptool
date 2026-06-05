@@ -4,6 +4,7 @@ import { getValidAccessToken } from "@uptool/services";
 import type { Job } from "bullmq";
 import { ingestEmailQueue, type IngestEmailJobData, type PollEmailAccountJobData } from "../queues";
 import { logger } from "../logger";
+import { pollImapAccount } from "./poll-imap-account";
 
 async function fetchMicrosoftMessages(
   accessToken: string,
@@ -128,6 +129,13 @@ export async function pollEmailAccountProcessor(job: Job<PollEmailAccountJobData
 
   if (!account || account.status !== "connected") {
     log.info("Account not found or not connected — skipping");
+    return;
+  }
+
+  // IMAP uses credentials, not OAuth tokens — dispatch before getValidAccessToken
+  // (which only knows the OAuth providers). The adapter handles its own status.
+  if (account.provider === "imap") {
+    await pollImapAccount(account, log);
     return;
   }
 

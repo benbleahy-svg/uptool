@@ -11,6 +11,7 @@ import {
 } from "./actions";
 import { DisconnectButton } from "./disconnect-button";
 import { ForwardingAddressSection } from "./forwarding-address-section";
+import { ImapConnectDialog } from "./imap-connect-dialog";
 
 interface Props {
   params: Promise<{ orgSlug: string }>;
@@ -75,6 +76,21 @@ export default async function EmailAccountsPage({ params, searchParams }: Props)
               {t("email_accounts.add_google")}
             </button>
           </form>
+          <ImapConnectDialog
+            orgSlug={orgSlug}
+            strings={{
+              button: t("imap.button"),
+              dialog_title: t("imap.dialog_title"),
+              email: t("imap.email"),
+              server: t("imap.server"),
+              port: t("imap.port"),
+              tls: t("imap.tls"),
+              password: t("imap.password"),
+              connecting: t("imap.connecting"),
+              connect: t("imap.connect"),
+              connect_failed: t("imap.connect_failed"),
+            }}
+          />
         </div>
 
         {accounts.length === 0 ? (
@@ -87,8 +103,14 @@ export default async function EmailAccountsPage({ params, searchParams }: Props)
               {accounts.map((account) => (
                 <li key={account.id} className="flex items-center justify-between px-4 py-3">
                   <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-full bg-[hsl(var(--muted))] flex items-center justify-center text-xs font-medium shrink-0">
-                      {account.provider === "microsoft" ? "M" : "G"}
+                    <div className="w-8 h-8 rounded-full bg-[hsl(var(--muted))] flex items-center justify-center font-medium shrink-0">
+                      <span className={account.provider === "imap" ? "text-[9px]" : "text-xs"}>
+                        {account.provider === "microsoft"
+                          ? "M"
+                          : account.provider === "imap"
+                            ? "IMAP"
+                            : "G"}
+                      </span>
                     </div>
                     <div>
                       <p className="text-sm font-medium">{account.email}</p>

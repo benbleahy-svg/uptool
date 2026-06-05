@@ -9,7 +9,8 @@ const config: NextConfig = {
   },
   // bullmq + its ioredis dep are Node-only; keep them out of the webpack bundle
   // so the CAD-thumbnail producer (server actions / RSC) loads them at runtime.
-  serverExternalPackages: ["bullmq"],
+  // imapflow + mailparser are likewise Node-only (used by the IMAP connect action).
+  serverExternalPackages: ["bullmq", "imapflow", "mailparser"],
   // react-pdf pulls in the optional native `canvas` package (Node-only); stop
   // webpack from trying to bundle it for the browser.
   webpack: (webpackConfig) => {

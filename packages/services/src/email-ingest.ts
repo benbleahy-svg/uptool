@@ -6,7 +6,7 @@ import { rfqService } from "./rfq";
 export interface IngestPayload {
   orgId: string;
   emailAccountId: string;
-  provider: "microsoft" | "gmail";
+  provider: "microsoft" | "gmail" | "imap";
   providerMessageId: string;
   providerThreadId: string;
   fromEmail: string;

@@ -20,7 +20,7 @@ import { storageService } from "./storage";
 export interface CreateRfqFromEmailInput {
   orgId: string;
   emailAccountId: string;
-  provider: "microsoft" | "gmail";
+  provider: "microsoft" | "gmail" | "imap";
   providerThreadId: string;
   providerMessageId: string;
   fromEmail: string;

@@ -14,6 +14,16 @@ export interface ConnectAccountInput {
   expiresAt?: Date;
 }
 
+export interface ConnectImapInput {
+  orgId: string;
+  userId: string;
+  email: string;
+  imapHost: string;
+  imapPort: number;
+  imapTls: boolean;
+  password: string;
+}
+
 export const emailAccountService = {
   async connect(input: ConnectAccountInput) {
     const [account] = await db
@@ -44,6 +54,49 @@ export const emailAccountService = {
       .returning();
     // Register the recurring poll for this account. Non-fatal: a transient Redis
     // failure here is reconciled by the worker's startup sync.
+    if (account) {
+      try {
+        await registerAccountPoll(account.id, account.orgId);
+      } catch (err) {
+        console.error("Failed to register poll scheduler for account", account.id, err);
+      }
+    }
+    return account;
+  },
+
+  async connectImap(input: ConnectImapInput) {
+    const [account] = await db
+      .insert(emailAccounts)
+      .values({
+        orgId: input.orgId,
+        provider: "imap",
+        email: input.email,
+        imapHost: input.imapHost,
+        imapPort: input.imapPort,
+        imapTls: input.imapTls,
+        imapPassword: encrypt(input.password),
+        status: "connected",
+        authorizedByUserId: input.userId,
+      })
+      .onConflictDoUpdate({
+        target: [emailAccounts.orgId, emailAccounts.email],
+        set: {
+          provider: "imap",
+          imapHost: input.imapHost,
+          imapPort: input.imapPort,
+          imapTls: input.imapTls,
+          imapPassword: encrypt(input.password),
+          status: "connected",
+          errorMessage: null,
+          authorizedByUserId: input.userId,
+          // Clear any OAuth tokens if this address was previously connected via OAuth.
+          accessToken: null,
+          refreshToken: null,
+          tokenExpiresAt: null,
+        },
+      })
+      .returning();
+    // Same recurring-poll registration as OAuth connect. Non-fatal.
     if (account) {
       try {
         await registerAccountPoll(account.id, account.orgId);

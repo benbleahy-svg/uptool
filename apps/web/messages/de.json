@@ -123,6 +123,18 @@
       "no_accounts": "Noch keine E-Mail-Konten verbunden.",
       "first_check_info": "Die erste Prüfung erfolgt innerhalb weniger Minuten."
     },
+    "imap": {
+      "button": "Anderes Konto (IMAP)",
+      "dialog_title": "IMAP-Konto verbinden",
+      "email": "E-Mail-Adresse",
+      "server": "IMAP-Server",
+      "port": "Port",
+      "tls": "SSL/TLS verwenden",
+      "password": "Passwort",
+      "connecting": "Verbinde…",
+      "connect": "Verbinden",
+      "connect_failed": "Verbindung fehlgeschlagen — bitte Server und Zugangsdaten prüfen."
+    },
     "members": {
       "title": "Mitglieder",
       "subtitle": "Personen mit Zugang zu dieser Werkstatt verwalten.",

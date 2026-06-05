@@ -123,6 +123,18 @@
       "no_accounts": "No email accounts connected yet.",
       "first_check_info": "The first check will happen within a few minutes."
     },
+    "imap": {
+      "button": "Other (IMAP)",
+      "dialog_title": "Connect IMAP account",
+      "email": "Email address",
+      "server": "IMAP server",
+      "port": "Port",
+      "tls": "Use SSL/TLS",
+      "password": "Password",
+      "connecting": "Connecting…",
+      "connect": "Connect",
+      "connect_failed": "Could not connect — check your server and credentials."
+    },
     "members": {
       "title": "Members",
       "subtitle": "Manage people with access to this shop.",

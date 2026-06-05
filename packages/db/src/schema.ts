@@ -158,12 +158,18 @@ export const emailAccounts = pgTable(
     orgId: uuid("org_id")
       .notNull()
       .references(() => orgs.id, { onDelete: "cascade" }),
-    provider: text("provider").notNull(), // 'microsoft' | 'gmail'
+    provider: text("provider").notNull(), // 'microsoft' | 'gmail' | 'imap'
     email: text("email").notNull(),
     displayName: text("display_name"),
-    accessToken: text("access_token"), // encrypted: iv:ciphertext
-    refreshToken: text("refresh_token"), // encrypted: iv:ciphertext
+    accessToken: text("access_token"), // OAuth; encrypted: iv:ciphertext
+    refreshToken: text("refresh_token"), // OAuth; encrypted: iv:ciphertext
     tokenExpiresAt: timestamp("token_expires_at", { withTimezone: true }),
+    // IMAP-only connection fields (null for OAuth rows). imapPassword is
+    // encrypted at rest with the same AES-256-GCM helper as access_token.
+    imapHost: text("imap_host"),
+    imapPort: integer("imap_port"),
+    imapTls: boolean("imap_tls").notNull().default(true),
+    imapPassword: text("imap_password"), // encrypted: iv:tag:ciphertext
     lastCheckedAt: timestamp("last_checked_at", { withTimezone: true }),
     status: text("status").notNull().default("connected"), // 'connected' | 'error' | 'disconnected'
     errorMessage: text("error_message"),
@@ -176,6 +182,10 @@ export const emailAccounts = pgTable(
     index("idx_email_accounts_org").on(t.orgId),
     // Backs emailAccountService.connect()'s onConflictDoUpdate target [orgId, email].
     uniqueIndex("uniq_email_accounts_org_email").on(t.orgId, t.email),
+    check(
+      "email_accounts_provider_check",
+      sql`${t.provider} IN ('microsoft', 'gmail', 'imap')`,
+    ),
   ],
 );
 

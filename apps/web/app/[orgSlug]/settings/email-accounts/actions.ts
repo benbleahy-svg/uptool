@@ -2,9 +2,15 @@
 
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
+import { z } from "zod";
 import { db } from "@uptool/db";
 import { requireAuth } from "@/lib/auth";
-import { emailAccountService, blockListService } from "@uptool/services";
+import {
+  emailAccountService,
+  blockListService,
+  ImapConnectionError,
+  testImapConnection,
+} from "@uptool/services";
 
 function encodeState(data: { orgId: string; userId: string; orgSlug: string }): string {
   return Buffer.from(JSON.stringify(data)).toString("base64url");
@@ -66,6 +72,49 @@ export async function connectGoogleAccount(orgSlug: string) {
   });
 
   redirect(`https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`);
+}
+
+const imapInputSchema = z.object({
+  email: z.string().email(),
+  imapHost: z.string().trim().min(1),
+  imapPort: z.number().int().min(1).max(65535),
+  imapTls: z.boolean(),
+  password: z.string().min(1),
+});
+
+export type ConnectImapResult = { ok: true } | { ok: false; error: "invalid" | "connect_failed" };
+
+export async function connectImapAction(
+  orgSlug: string,
+  input: z.input<typeof imapInputSchema>,
+): Promise<ConnectImapResult> {
+  const { userId } = await requireAuth();
+  const org = await resolveOrg(orgSlug, userId);
+
+  const parsed = imapInputSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: "invalid" };
+  const { email, imapHost, imapPort, imapTls, password } = parsed.data;
+
+  // Verify credentials BEFORE persisting — never save a config that can't connect.
+  try {
+    await testImapConnection({ email, imapHost, imapPort, imapTls, password });
+  } catch (err) {
+    if (err instanceof ImapConnectionError) return { ok: false, error: "connect_failed" };
+    throw err;
+  }
+
+  await emailAccountService.connectImap({
+    orgId: org.id,
+    userId,
+    email,
+    imapHost,
+    imapPort,
+    imapTls,
+    password,
+  });
+
+  revalidatePath(`/${orgSlug}/settings/email-accounts`);
+  return { ok: true };
 }
 
 export async function disconnectEmailAccount(formData: FormData) {
