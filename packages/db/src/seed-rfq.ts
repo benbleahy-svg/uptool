@@ -503,9 +503,13 @@ Acme GmbH`,
     // processType values match the badge map + add-part dropdown so pills colour
     // correctly (yellow "Assembly", etc.).
     const ASM_DOMAIN = "assembly-demo.test";
+    // High fixed number so the seed never collides with counter-based ingested
+    // RFQ numbers (which start at ~1000). Enforced by the unique (org_id,
+    // rfq_number) constraint (migration 0027).
+    const ASM_RFQ_NUMBER = 9001;
     await tx
       .delete(schema.rfqs)
-      .where(and(eq(schema.rfqs.orgId, org.id), eq(schema.rfqs.rfqNumber, 1005)));
+      .where(and(eq(schema.rfqs.orgId, org.id), eq(schema.rfqs.rfqNumber, ASM_RFQ_NUMBER)));
     await tx
       .delete(schema.contacts)
       .where(and(eq(schema.contacts.orgId, org.id), like(schema.contacts.email, `%@${ASM_DOMAIN}`)));
@@ -530,7 +534,7 @@ Acme GmbH`,
       .insert(schema.rfqs)
       .values({
         orgId: org.id,
-        rfqNumber: 1005,
+        rfqNumber: ASM_RFQ_NUMBER,
         customerId: asmCust.id,
         contactId: asmContact.id,
         subject: "Anfrage Getriebe-Baugruppe (Assembly + Sub-Assembly)",
@@ -622,7 +626,7 @@ Acme GmbH`,
       assemblyQuantity: 2,
     });
     console.log(
-      "Created RFQ #1005 — assembly demo (Gearbox → Housing → Top/Bottom/Gasket×2, + Gear Set, Fasteners×8)",
+      `Created RFQ #${ASM_RFQ_NUMBER} — assembly demo (Gearbox → Housing → Top/Bottom/Gasket×2, + Gear Set, Fasteners×8)`,
     );
   });
 

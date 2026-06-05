@@ -12,6 +12,7 @@ import {
   primaryKey,
   text,
   timestamp,
+  unique,
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
@@ -305,6 +306,8 @@ export const rfqs = pgTable(
       "rfqs_quote_bulk_discount_pct_check",
       sql`${t.quoteBulkDiscountPct} IS NULL OR (${t.quoteBulkDiscountPct} >= 0 AND ${t.quoteBulkDiscountPct} <= 100)`,
     ),
+    // RFQ numbers are unique within an org (seed + ingest counter must not collide).
+    unique("rfqs_org_id_rfq_number_unique").on(t.orgId, t.rfqNumber),
   ],
 );
 
