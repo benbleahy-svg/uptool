@@ -1,15 +1,26 @@
-import { type NextRequest, NextResponse } from "next/server";
-import { db, orgs, rfqs } from "@uptool/db";
+import { db, orgs } from "@uptool/db";
+import { type IngestPayload, emailIngestService } from "@uptool/services";
 import { eq } from "drizzle-orm";
-import { withOrgContext } from "@uptool/db";
-import { sql } from "drizzle-orm";
+import { type NextRequest, NextResponse } from "next/server";
+
+interface PostmarkAttachment {
+  Name: string;
+  Content: string; // base64
+  ContentType: string;
+  ContentLength: number;
+}
 
 interface PostmarkInboundPayload {
-  To: string;
   From: string;
   FromName?: string;
+  To: string;
+  ToFull?: Array<{ Email: string }>;
   Subject?: string;
+  TextBody?: string;
+  HtmlBody?: string;
   MessageID: string;
+  Date?: string;
+  Attachments?: PostmarkAttachment[];
 }
 
 if (process.env.NODE_ENV === "production" && !process.env.POSTMARK_INBOUND_WEBHOOK_SECRET) {
@@ -27,6 +38,7 @@ function verifyWebhookSecret(req: NextRequest): boolean {
 }
 
 export async function POST(req: NextRequest) {
+  // Auth is checked before any payload processing (fail-closed).
   if (!verifyWebhookSecret(req)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
@@ -48,31 +60,41 @@ export async function POST(req: NextRequest) {
   });
 
   if (!org) {
-    // Not an error — just not our address; return 200 so Postmark doesn't retry
+    // Not an error — just not our address; return 200 so Postmark doesn't retry.
     return NextResponse.json({ ok: true, skipped: true });
   }
 
-  // Stub: IngestEmail job will be implemented in Epic 1
-  // For now, create a bare RFQ row so the email isn't silently dropped
-  await withOrgContext(org.id, async (tx) => {
-    const [updated] = await tx
-      .update(orgs)
-      .set({ rfqCounter: sql`rfq_counter + 1` })
-      .where(eq(orgs.id, org.id))
-      .returning({ rfqCounter: orgs.rfqCounter });
+  // Forwarding-address ingestion: no connected account (emailAccountId=null).
+  // Postmark has no thread concept, so MessageID is used as the thread key —
+  // each forwarded email starts its own thread. A forwarded *reply* therefore
+  // creates a separate RFQ (acceptable limitation for the backup forwarding path).
+  const ingest: IngestPayload = {
+    orgId: org.id,
+    emailAccountId: null,
+    provider: "postmark",
+    providerMessageId: payload.MessageID,
+    providerThreadId: payload.MessageID,
+    fromEmail: payload.From,
+    fromName: payload.FromName,
+    toEmails: (payload.ToFull ?? []).map((t) => t.Email),
+    subject: payload.Subject,
+    bodyText: payload.TextBody,
+    receivedAt: payload.Date ? new Date(payload.Date) : new Date(),
+    attachments: (payload.Attachments ?? []).map((a) => ({
+      filename: a.Name,
+      contentType: a.ContentType,
+      sizeBytes: a.ContentLength,
+      data: Buffer.from(a.Content, "base64"),
+    })),
+  };
 
-    const rfqNumber = updated?.rfqCounter;
-    if (!rfqNumber) throw new Error("Failed to increment RFQ counter");
-
-    await tx.insert(rfqs).values({
-      orgId: org.id,
-      rfqNumber,
-      subject: payload.Subject ?? null,
-      source: "manual_forward",
-      status: "new",
-      receivedAt: new Date(),
-    });
-  });
-
-  return NextResponse.json({ ok: true });
+  try {
+    const result = await emailIngestService.ingestMessage(ingest);
+    return NextResponse.json({ ok: true, result });
+  } catch (err) {
+    // Surface ingest failures: log + 422 so Postmark retries (don't swallow).
+    console.error("[postmark-inbound] ingest failed", err);
+    const message = err instanceof Error ? err.message : "ingest_failed";
+    return NextResponse.json({ error: message }, { status: 422 });
+  }
 }

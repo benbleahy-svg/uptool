@@ -7,6 +7,7 @@ export type { CustomerSource } from "./customer";
 export { rfqService } from "./rfq";
 export { blockListService } from "./block-list";
 export { emailIngestService } from "./email-ingest";
+export type { IngestPayload } from "./email-ingest";
 export {
   getValidAccessToken,
   saveEncryptedTokens,

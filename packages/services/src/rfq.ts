@@ -19,8 +19,8 @@ import { storageService } from "./storage";
 
 export interface CreateRfqFromEmailInput {
   orgId: string;
-  emailAccountId: string;
-  provider: "microsoft" | "gmail" | "imap";
+  emailAccountId: string | null;
+  provider: "microsoft" | "gmail" | "imap" | "postmark";
   providerThreadId: string;
   providerMessageId: string;
   fromEmail: string;

@@ -5,8 +5,9 @@ import { rfqService } from "./rfq";
 
 export interface IngestPayload {
   orgId: string;
-  emailAccountId: string;
-  provider: "microsoft" | "gmail" | "imap";
+  // null for forwarding-address (Postmark) ingestion — no connected account.
+  emailAccountId: string | null;
+  provider: "microsoft" | "gmail" | "imap" | "postmark";
   providerMessageId: string;
   providerThreadId: string;
   fromEmail: string;
