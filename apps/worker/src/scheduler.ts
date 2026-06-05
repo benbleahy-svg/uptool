@@ -14,7 +14,7 @@ export async function scheduleEmailPolls(): Promise<void> {
       `poll:${account.id}`,
       { emailAccountId: account.id, orgId: account.orgId },
       {
-        jobId: `poll:${account.id}`,
+        jobId: `poll-${account.id}`,
         removeOnComplete: 10,
         removeOnFail: 10,
       },

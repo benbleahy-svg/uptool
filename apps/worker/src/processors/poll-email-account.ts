@@ -164,7 +164,7 @@ export async function pollEmailAccountProcessor(job: Job<PollEmailAccountJobData
         };
 
         await ingestEmailQueue.add(`ingest:${msg.id}`, jobData, {
-          jobId: `ingest:${msg.id}`,
+          jobId: `ingest-${msg.id}`,
           removeOnComplete: 100,
           removeOnFail: 50,
         });
@@ -202,7 +202,7 @@ export async function pollEmailAccountProcessor(job: Job<PollEmailAccountJobData
         };
 
         await ingestEmailQueue.add(`ingest:${msg.id}`, jobData, {
-          jobId: `ingest:${msg.id}`,
+          jobId: `ingest-${msg.id}`,
           removeOnComplete: 100,
           removeOnFail: 50,
         });
