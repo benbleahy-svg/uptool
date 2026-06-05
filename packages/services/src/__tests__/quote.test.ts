@@ -1,18 +1,21 @@
 import { db, parts } from "@uptool/db";
 import { eq } from "drizzle-orm";
 import { afterEach, describe, expect, test, vi } from "vitest";
-import { NotFoundError, ValidationError, quoteService } from "../index";
-import { createOrg, createRfqWithPart, dropOrg } from "./helpers/fixtures";
+import { NotFoundError, QuoteNoSendAccountError, ValidationError, quoteService } from "../index";
+import { createOrg, createRfqWithPart, createSendAccount, dropOrg } from "./helpers/fixtures";
 
-// Mock the Resend SDK (dynamic-imported inside quoteService.sendQuote).
-const { sendMock } = vi.hoisted(() => ({ sendMock: vi.fn() }));
-vi.mock("resend", () => ({ Resend: vi.fn(() => ({ emails: { send: sendMock } })) }));
+// Mock the send adapter layer (real adapters/SDKs are covered by email-sender
+// tests). resolveSendAccount stays real — exercised via createSendAccount.
+const { sendQuoteEmailMock } = vi.hoisted(() => ({ sendQuoteEmailMock: vi.fn() }));
+vi.mock("../email-sender", () => ({
+  getSendAdapter: () => ({ sendQuoteEmail: sendQuoteEmailMock }),
+}));
 
 const createdOrgs: string[] = [];
 
 afterEach(async () => {
   for (const id of createdOrgs.splice(0)) await dropOrg(id);
-  sendMock.mockReset();
+  sendQuoteEmailMock.mockReset();
 });
 
 /** Org (+rfq+part) registered for teardown. */
@@ -396,9 +399,10 @@ describe("updateQuoteNotes", () => {
 });
 
 describe("sendQuote", () => {
-  test("emails via Resend, marks quote sent + rfq sent + sentAt", async () => {
-    sendMock.mockResolvedValue({ data: { id: "email-1" }, error: null });
+  test("sends via resolved adapter, marks quote sent + rfq sent + sentAt", async () => {
+    sendQuoteEmailMock.mockResolvedValue(undefined);
     const { orgId, rfqId, partId } = await setup();
+    await createSendAccount(orgId); // connected default-send account
     const { quoteId } = await seedQuote(orgId, rfqId, partId);
 
     await quoteService.sendQuote(orgId, rfqId, {
@@ -408,11 +412,15 @@ describe("sendQuote", () => {
       pdfBase64: "QUJD",
     });
 
-    expect(sendMock).toHaveBeenCalledTimes(1);
-    const payload = sendMock.mock.calls[0]?.[0];
-    expect(payload.to).toEqual(["customer@acme.test"]);
-    expect(payload.attachments[0].filename).toBe("Quote-1.pdf");
-    expect(payload.attachments[0].content).toBe("QUJD");
+    expect(sendQuoteEmailMock).toHaveBeenCalledTimes(1);
+    const params = sendQuoteEmailMock.mock.calls[0]?.[0];
+    expect(params.to).toBe("customer@acme.test");
+    expect(params.subject).toBe("Angebot #1");
+    expect(params.pdfFilename).toBe("Quote-1.pdf");
+    expect(params.pdfBase64).toBe("QUJD");
+    // Manual RFQ (no email thread) → fresh email, no thread context.
+    expect(params.threadId).toBeUndefined();
+    expect(params.replyToMessageId).toBeUndefined();
 
     const q = must(await readQuote(quoteId));
     expect(q.status).toBe("sent");
@@ -420,9 +428,31 @@ describe("sendQuote", () => {
     expect(await readRfqStatus(rfqId)).toBe("sent");
   });
 
-  test("Resend failure → throws, DB unchanged", async () => {
-    sendMock.mockResolvedValue({ data: null, error: { message: "boom" } });
+  test("no connected send account → QuoteNoSendAccountError, DB unchanged", async () => {
+    const { orgId, rfqId, partId } = await setup(); // no send account created
+    const { quoteId } = await seedQuote(orgId, rfqId, partId);
+    const rfqStatusBefore = await readRfqStatus(rfqId);
+
+    await expect(
+      quoteService.sendQuote(orgId, rfqId, {
+        to: "customer@acme.test",
+        subject: "Q",
+        body: "x",
+        pdfBase64: "QUJD",
+      }),
+    ).rejects.toBeInstanceOf(QuoteNoSendAccountError);
+
+    expect(sendQuoteEmailMock).not.toHaveBeenCalled();
+    const q = must(await readQuote(quoteId));
+    expect(q.status).toBe("draft");
+    expect(q.sentAt).toBeNull();
+    expect(await readRfqStatus(rfqId)).toBe(rfqStatusBefore);
+  });
+
+  test("adapter failure → throws, DB unchanged", async () => {
+    sendQuoteEmailMock.mockRejectedValue(new Error("smtp boom"));
     const { orgId, rfqId, partId } = await setup();
+    await createSendAccount(orgId);
     const { quoteId } = await seedQuote(orgId, rfqId, partId);
     const rfqStatusBefore = await readRfqStatus(rfqId);
 
@@ -444,8 +474,9 @@ describe("sendQuote", () => {
 
 describe("createQuoteRevision", () => {
   test("new draft + new number, line items copied, rfq → quoted", async () => {
-    sendMock.mockResolvedValue({ data: { id: "email-1" }, error: null });
+    sendQuoteEmailMock.mockResolvedValue(undefined);
     const { orgId, rfqId, partId } = await setup();
+    await createSendAccount(orgId);
     const { quoteId, quoteNumber } = await seedQuote(orgId, rfqId, partId);
     await quoteService.sendQuote(orgId, rfqId, {
       to: "customer@acme.test",

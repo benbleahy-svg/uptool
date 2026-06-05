@@ -7,11 +7,25 @@ export type { CustomerSource } from "./customer";
 export { rfqService } from "./rfq";
 export { blockListService } from "./block-list";
 export { emailIngestService } from "./email-ingest";
-export { getValidAccessToken, saveEncryptedTokens, getDecryptedImapPassword } from "./email-token";
+export {
+  getValidAccessToken,
+  saveEncryptedTokens,
+  getDecryptedImapPassword,
+  getDecryptedSmtpPassword,
+} from "./email-token";
 export { syncAccountPolls, POLL_INTERVAL_MS } from "./email-poll-scheduler";
 export { testImapConnection, pollImapMailbox, ImapConnectionError } from "./imap";
 export type { ImapConfig } from "./imap";
 export type { ConnectImapInput } from "./email-account";
+export { resolveSendAccount, QuoteNoSendAccountError } from "./send-account-resolver";
+export type { EmailAccount } from "./send-account-resolver";
+export {
+  getSendAdapter,
+  GmailSendAdapter,
+  MicrosoftSendAdapter,
+  ImapSmtpSendAdapter,
+} from "./email-sender";
+export type { EmailSendAdapter, SendQuoteEmailParams } from "./email-sender";
 export { partService, DEFAULT_QUANTITY_BREAKS } from "./part";
 export type { CreatePartInput, CreateOperationInput, CostAtQty } from "./part";
 export { quoteService } from "./quote";

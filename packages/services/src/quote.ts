@@ -8,8 +8,9 @@ import {
 } from "@uptool/db";
 import { and, asc, eq, gt, sql } from "drizzle-orm";
 import { NotFoundError, ValidationError } from "./estimate/errors";
+import { getSendAdapter } from "./email-sender";
 import { partService, DEFAULT_QUANTITY_BREAKS } from "./part";
-import { replyService } from "./reply";
+import { QuoteNoSendAccountError, resolveSendAccount } from "./send-account-resolver";
 import {
   type AddQuoteLineItemInput,
   type UpdateQuoteLineItemInput,
@@ -249,12 +250,14 @@ export const quoteService = {
   },
 
   /**
-   * Send the RFQ's current quote: email the PDF via Resend, then mark it sent.
-   * The PDF bytes are rendered by the caller (apps/web — React-PDF can't run in
-   * services) and passed as base64. Order matters: send FIRST, then persist. If
-   * Resend fails, nothing in the DB changed (caller may retry). If the DB write
-   * fails AFTER a successful send, log the inconsistency rather than throw (the
-   * email is already out; throwing would mislead the caller into re-sending).
+   * Send the RFQ's current quote: email the PDF from a resolved connected account
+   * (see resolveSendAccount), threading onto the RFQ's email thread when one
+   * exists. The PDF bytes are rendered by the caller (apps/web — React-PDF can't
+   * run in services) and passed as base64. Order matters: send FIRST, then
+   * persist. If the send fails, nothing in the DB changed (caller may retry). If
+   * the DB write fails AFTER a successful send, log the inconsistency rather than
+   * throw (the email is already out; throwing would mislead the caller into
+   * re-sending). Throws QuoteNoSendAccountError if no account can send.
    * Handles first-send AND re-send (idempotent: status→sent, sentAt→now()).
    */
   async sendQuote(
@@ -266,28 +269,37 @@ export const quoteService = {
     const quote = await this.getCurrentQuote(orgId, rfqId);
     if (!quote) throw new NotFoundError("No quote to send");
 
-    const from = await replyService.resolveFromEmail(orgId);
-    let cc: string[] | undefined;
-    const uid = input.userId;
-    if (uid) {
-      const user = await db.query.users.findFirst({
-        where: (u, { eq: e }) => e(u.id, uid),
-        columns: { email: true },
+    const account = await resolveSendAccount(orgId, rfqId, input.userId);
+    if (!account) throw new QuoteNoSendAccountError();
+
+    // Thread context: reply onto the RFQ's existing email thread when present;
+    // a manual RFQ (no thread) is sent as a fresh email.
+    const thread = await db.query.emailThreads.findFirst({
+      where: (t, { and, eq: e }) => and(e(t.rfqId, rfqId), e(t.orgId, orgId)),
+    });
+    let threadId: string | undefined;
+    let replyToMessageId: string | undefined;
+    if (thread) {
+      threadId = thread.providerThreadId;
+      const lastInbound = await db.query.emailMessages.findFirst({
+        where: (m, { and, eq: e }) => and(e(m.threadId, thread.id), e(m.direction, "inbound")),
+        orderBy: (m, { desc }) => [desc(m.receivedAt)],
+        columns: { providerMessageId: true },
       });
-      if (user?.email && user.email !== input.to) cc = [user.email];
+      replyToMessageId = lastInbound?.providerMessageId ?? undefined;
     }
 
-    const { Resend } = await import("resend");
-    const resend = new Resend(process.env.RESEND_API_KEY);
-    const result = await resend.emails.send({
-      from,
-      to: [input.to],
-      cc,
+    // Send FIRST; persist only on success. A throw here leaves the DB unchanged.
+    await getSendAdapter(account).sendQuoteEmail({
+      account,
+      to: input.to,
       subject: input.subject,
-      text: input.body,
-      attachments: [{ filename: `Quote-${quote.quoteNumber}.pdf`, content: input.pdfBase64 }],
+      bodyText: input.body,
+      pdfBase64: input.pdfBase64,
+      pdfFilename: `Quote-${quote.quoteNumber}.pdf`,
+      replyToMessageId,
+      threadId,
     });
-    if (result.error) throw new Error(`Resend failed: ${result.error.message}`);
 
     try {
       await withOrgContext(orgId, async (tx) => {

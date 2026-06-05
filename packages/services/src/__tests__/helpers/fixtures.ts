@@ -2,7 +2,7 @@
 // (unique slug) and tears it down via cascade, so tests don't depend on or
 // pollute each other.
 
-import { db, orgs, parts, rfqs } from "@uptool/db";
+import { db, emailAccounts, orgs, parts, rfqs } from "@uptool/db";
 import { eq } from "drizzle-orm";
 
 export async function createOrg(): Promise<string> {
@@ -41,7 +41,27 @@ export async function createPart(orgId: string, rfqId: string): Promise<string> 
   return part.id;
 }
 
-/** Delete an org; cascades to rfqs → parts → operations/materials. */
+/** Insert a connected email account for an org (cleaned up via org cascade). */
+export async function createSendAccount(
+  orgId: string,
+  overrides: Partial<typeof emailAccounts.$inferInsert> = {},
+): Promise<string> {
+  const [a] = await db
+    .insert(emailAccounts)
+    .values({
+      orgId,
+      provider: "gmail",
+      email: `send-${crypto.randomUUID()}@shop.test`,
+      status: "connected",
+      isDefaultSend: true,
+      ...overrides,
+    })
+    .returning({ id: emailAccounts.id });
+  if (!a) throw new Error("fixture: failed to create email account");
+  return a.id;
+}
+
+/** Delete an org; cascades to rfqs → parts → operations/materials → email accounts. */
 export async function dropOrg(orgId: string): Promise<void> {
   await db.delete(orgs).where(eq(orgs.id, orgId));
 }
