@@ -138,6 +138,8 @@ export async function setOwnerAction(orgSlug: string, accountId: string, ownerUs
   const org = await resolveOrg(orgSlug, userId);
   await emailAccountService.setOwner(accountId, org.id, ownerUserId);
   revalidatePath(`/${orgSlug}/settings/email-accounts`);
+  // Owner/default changes affect the Send page's resolved "from" account.
+  revalidatePath(`/${orgSlug}/rfqs`, "layout");
 }
 
 export async function setDefaultSendAction(orgSlug: string, accountId: string) {
@@ -145,6 +147,8 @@ export async function setDefaultSendAction(orgSlug: string, accountId: string) {
   const org = await resolveOrg(orgSlug, userId);
   await emailAccountService.setDefaultSend(accountId, org.id);
   revalidatePath(`/${orgSlug}/settings/email-accounts`);
+  // Owner/default changes affect the Send page's resolved "from" account.
+  revalidatePath(`/${orgSlug}/rfqs`, "layout");
 }
 
 export async function disconnectEmailAccount(formData: FormData) {
