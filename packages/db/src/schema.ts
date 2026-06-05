@@ -171,17 +171,31 @@ export const emailAccounts = pgTable(
     imapTls: boolean("imap_tls").notNull().default(true),
     imapPassword: text("imap_password"), // encrypted: iv:tag:ciphertext
     lastCheckedAt: timestamp("last_checked_at", { withTimezone: true }),
-    status: text("status").notNull().default("connected"), // 'connected' | 'error' | 'disconnected'
+    status: text("status").notNull().default("connected"), // 'connected' | 'error' | 'disconnected' | 'reconnect_required'
     errorMessage: text("error_message"),
     authorizedByUserId: uuid("authorized_by_user_id").references(() => users.id, {
       onDelete: "set null",
     }),
+    // Send-side ownership + settings. ownerUserId scopes "send as me"; one default
+    // send account per org (enforced by partial unique index below). smtpPassword
+    // is encrypted at rest with the same AES-256-GCM helper as imapPassword.
+    ownerUserId: uuid("owner_user_id").references(() => users.id, { onDelete: "set null" }),
+    isDefaultSend: boolean("is_default_send").notNull().default(false),
+    smtpHost: text("smtp_host"),
+    smtpPort: integer("smtp_port"),
+    smtpTls: boolean("smtp_tls").notNull().default(true),
+    smtpPassword: text("smtp_password"), // encrypted: iv:tag:ciphertext
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
     index("idx_email_accounts_org").on(t.orgId),
+    index("idx_email_accounts_org_owner").on(t.orgId, t.ownerUserId),
     // Backs emailAccountService.connect()'s onConflictDoUpdate target [orgId, email].
     uniqueIndex("uniq_email_accounts_org_email").on(t.orgId, t.email),
+    // At most one default send account per org.
+    uniqueIndex("uniq_default_send_per_org")
+      .on(t.orgId)
+      .where(sql`${t.isDefaultSend} = true`),
     check(
       "email_accounts_provider_check",
       sql`${t.provider} IN ('microsoft', 'gmail', 'imap')`,

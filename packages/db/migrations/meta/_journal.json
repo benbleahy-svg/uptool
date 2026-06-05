@@ -183,6 +183,13 @@
       "when": 1780660176018,
       "tag": "0025_thick_queen_noir",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1780671975651,
+      "tag": "0026_smooth_sasquatch",
+      "breakpoints": true
     }
   ]
 }

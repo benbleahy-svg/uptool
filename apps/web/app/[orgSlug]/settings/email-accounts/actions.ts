@@ -44,7 +44,7 @@ export async function connectMicrosoftAccount(orgSlug: string) {
     response_type: "code",
     redirect_uri: redirectUri,
     response_mode: "query",
-    scope: "offline_access Mail.Read User.Read",
+    scope: "offline_access Mail.Read Mail.Send User.Read",
     state,
   });
 
@@ -65,7 +65,8 @@ export async function connectGoogleAccount(orgSlug: string) {
     client_id: clientId,
     redirect_uri: redirectUri,
     response_type: "code",
-    scope: "https://www.googleapis.com/auth/gmail.readonly email profile",
+    scope:
+      "https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.send email profile",
     access_type: "offline",
     prompt: "consent",
     state,
