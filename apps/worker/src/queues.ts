@@ -15,7 +15,8 @@ export const QUEUE_NAMES = {
 } as const;
 
 export const helloWorldQueue = new Queue(QUEUE_NAMES.HELLO_WORLD, { connection });
-export const pollEmailAccountQueue = new Queue(QUEUE_NAMES.POLL_EMAIL_ACCOUNT, { connection });
+// Poll jobs are produced by the repeatable scheduler in @uptool/services
+// (email-poll-scheduler); the worker only consumes them. No producer Queue here.
 export const ingestEmailQueue = new Queue(QUEUE_NAMES.INGEST_EMAIL, { connection });
 export const renderCadThumbnailQueue = new Queue(QUEUE_NAMES.RENDER_CAD_THUMBNAIL, { connection });
 

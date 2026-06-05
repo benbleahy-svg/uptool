@@ -8,6 +8,7 @@ export { rfqService } from "./rfq";
 export { blockListService } from "./block-list";
 export { emailIngestService } from "./email-ingest";
 export { getValidAccessToken, saveEncryptedTokens } from "./email-token";
+export { syncAccountPolls, POLL_INTERVAL_MS } from "./email-poll-scheduler";
 export { partService, DEFAULT_QUANTITY_BREAKS } from "./part";
 export type { CreatePartInput, CreateOperationInput, CostAtQty } from "./part";
 export { quoteService } from "./quote";

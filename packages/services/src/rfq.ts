@@ -69,6 +69,7 @@ export const rfqService = {
           contactId,
           emailAccountId: input.emailAccountId,
           subject: input.subject,
+          source: "email",
           status: "new",
           receivedAt: input.receivedAt,
           lastEmailAt: input.receivedAt,

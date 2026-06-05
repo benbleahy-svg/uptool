@@ -17,6 +17,7 @@
     "@microsoft/microsoft-graph-client": "^3.0.7",
     "@uptool/db": "workspace:*",
     "@uptool/shared": "workspace:*",
+    "bullmq": "^5.34.5",
     "drizzle-orm": "^0.39.1",
     "googleapis": "^172.0.0",
     "resend": "^4.0.0",

@@ -11,7 +11,7 @@ import {
   closeRenderer,
   renderCadThumbnailProcessor,
 } from "./processors/render-cad-thumbnail";
-import { scheduleEmailPolls } from "./scheduler";
+import { syncEmailPollSchedulers } from "./scheduler";
 import { logger } from "./logger";
 
 const helloWorker = new Worker(QUEUE_NAMES.HELLO_WORLD, helloWorldProcessor, { connection });
@@ -50,12 +50,10 @@ helloWorldQueue
   .then((job) => logger.info({ jobId: job.id }, "Startup check job queued"))
   .catch((err) => logger.error({ err }, "Failed to queue startup check"));
 
-// Schedule email polls immediately and every 5 minutes
-scheduleEmailPolls().catch((err) => logger.error({ err }, "Initial schedule failed"));
-const POLL_INTERVAL_MS = 5 * 60 * 1000;
-setInterval(() => {
-  scheduleEmailPolls().catch((err) => logger.error({ err }, "Scheduled poll failed"));
-}, POLL_INTERVAL_MS);
+// Register BullMQ repeatable poll schedulers for connected accounts. BullMQ's
+// repeat mechanism fires each account's poll every POLL_INTERVAL_MS — no manual
+// setInterval re-add (which dedup'd on a static jobId and stopped after one tick).
+syncEmailPollSchedulers().catch((err) => logger.error({ err }, "Failed to sync poll schedulers"));
 
 // Graceful shutdown
 async function shutdown() {

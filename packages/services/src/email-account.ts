@@ -1,6 +1,7 @@
 import { db, emailAccounts } from "@uptool/db";
 import { encrypt } from "@uptool/shared/crypto";
 import { and, eq } from "drizzle-orm";
+import { cancelAccountPoll, registerAccountPoll } from "./email-poll-scheduler";
 
 export interface ConnectAccountInput {
   orgId: string;
@@ -41,6 +42,15 @@ export const emailAccountService = {
         },
       })
       .returning();
+    // Register the recurring poll for this account. Non-fatal: a transient Redis
+    // failure here is reconciled by the worker's startup sync.
+    if (account) {
+      try {
+        await registerAccountPoll(account.id, account.orgId);
+      } catch (err) {
+        console.error("Failed to register poll scheduler for account", account.id, err);
+      }
+    }
     return account;
   },
 
@@ -81,5 +91,11 @@ export const emailAccountService = {
       .update(emailAccounts)
       .set({ status: "disconnected" })
       .where(and(eq(emailAccounts.id, accountId), eq(emailAccounts.orgId, orgId)));
+    // Stop the recurring poll. Non-fatal / idempotent.
+    try {
+      await cancelAccountPoll(accountId);
+    } catch (err) {
+      console.error("Failed to cancel poll scheduler for account", accountId, err);
+    }
   },
 };
