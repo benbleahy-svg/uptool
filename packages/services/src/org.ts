@@ -1,5 +1,5 @@
 import { eq, sql } from "drizzle-orm";
-import { db, memberships, orgs, users } from "@uptool/db";
+import { db, memberships, orgs, seedOrgMaterials, users } from "@uptool/db";
 import type { CreateOrgInput, UpdateGeneralSettingsInput } from "@uptool/shared";
 import { generateSlug, RESERVED_SLUGS, BRAND, UpdateGeneralSettingsSchema } from "@uptool/shared";
 
@@ -58,6 +58,9 @@ export const orgService = {
 
       // Update the user's own locale to match what they selected
       await tx.update(users).set({ locale }).where(sql`id = ${userId}::uuid`);
+
+      // Seed the org's materials library with DACH-standard defaults.
+      await seedOrgMaterials(tx, org.id);
 
       return org;
     });

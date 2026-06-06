@@ -2,6 +2,7 @@ import { sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 import * as schema from "./schema";
+import { seedOrgMaterials } from "./seed-org-materials";
 
 const connectionString =
   process.env.DATABASE_URL ?? "postgresql://uptool:uptool@localhost:5432/uptool";
@@ -56,6 +57,8 @@ async function seed() {
       userId: user.id,
       role: "owner",
     });
+
+    await seedOrgMaterials(tx, org.id);
 
     console.log(`Created org: ${org.name} (slug: ${org.slug})`);
     console.log(`Created user: ${user.email}`);

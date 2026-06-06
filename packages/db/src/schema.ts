@@ -560,6 +560,11 @@ export const partOperations = pgTable(
     runMinutes: numeric("run_minutes").notNull().default("0"),
     hourlyRateCents: integer("hourly_rate_cents").notNull().default(0),
     isNonRecurring: boolean("is_non_recurring").notNull().default(false),
+    // Cost bucket for the price breakdown (materials/inside/outside). 'inside' =
+    // in-house operation, 'outside' = subcontracted service, 'purchased' = bought-in
+    // part. Existing rows default to 'inside'. Supersedes the type-derived `outside`
+    // flag the client currently computes from OPERATION_CATALOGUE.
+    costCategory: text("cost_category").notNull().default("inside"),
     sortOrder: integer("sort_order").notNull().default(0),
     // Manual price override ("blue-stuck" cell). Null = use the calculated price.
     unitPriceOverrideCents: integer("unit_price_override_cents"),
@@ -581,6 +586,10 @@ export const partOperations = pgTable(
       "part_operations_markup_pct_check",
       sql`${t.markupPct} IS NULL OR (${t.markupPct} >= 0 AND ${t.markupPct} <= 100)`,
     ),
+    check(
+      "part_operations_cost_category_check",
+      sql`${t.costCategory} IN ('inside', 'outside', 'purchased')`,
+    ),
   ],
 );
 
@@ -601,6 +610,12 @@ export const partMaterials = pgTable(
       .references(() => parts.id, { onDelete: "cascade" }),
     materialType: text("material_type").notNull(), // 'sheet' | 'round_bar' | 'tube' | …
     fields: jsonb("fields").$type<Record<string, unknown>>().notNull(),
+    // Optional link to the org's materials library. Null = free-form card with no
+    // library reference (all existing cards). Set null on library-row delete so the
+    // card survives with its captured `fields` data.
+    materialId: uuid("material_id").references(() => orgMaterials.id, {
+      onDelete: "set null",
+    }),
     unitPriceOverrideCents: integer("unit_price_override_cents"),
     sortOrder: integer("sort_order").notNull().default(0),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
@@ -699,6 +714,39 @@ export const operationTemplates = pgTable(
   (t) => [index("idx_operation_templates_org").on(t.orgId)],
 );
 
+// Per-org materials library. Anchors part_materials cards to a named material with
+// a density (for weight→cost) and a configurable €/kg price. Seeded with DACH-
+// standard defaults (price 0 until configured in Settings → Materialien).
+export const orgMaterials = pgTable(
+  "org_materials",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id")
+      .notNull()
+      .references(() => orgs.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    category: text("category").notNull(),
+    densityGCm3: numeric("density_g_cm3", { precision: 6, scale: 4 }).notNull(),
+    priceEurPerKg: numeric("price_eur_per_kg", { precision: 10, scale: 4 })
+      .notNull()
+      .default("0"),
+    priceUpdatedAt: timestamp("price_updated_at", { withTimezone: true }).notNull().defaultNow(),
+    isDefault: boolean("is_default").notNull().default(false),
+    notes: text("notes"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("idx_org_materials_org").on(t.orgId),
+    index("idx_org_materials_org_category").on(t.orgId, t.category),
+    unique("org_materials_org_id_name_unique").on(t.orgId, t.name),
+    check(
+      "org_materials_category_check",
+      sql`${t.category} IN ('steel', 'aluminium', 'stainless', 'titanium', 'plastic', 'copper', 'other')`,
+    ),
+  ],
+);
+
 // ─── Epic 2 Relations ─────────────────────────────────────────────────────────
 
 export const partsRelations = relations(parts, ({ one, many }) => ({
@@ -724,6 +772,14 @@ export const partOperationsRelations = relations(partOperations, ({ one }) => ({
 export const partMaterialsRelations = relations(partMaterials, ({ one }) => ({
   org: one(orgs, { fields: [partMaterials.orgId], references: [orgs.id] }),
   part: one(parts, { fields: [partMaterials.partId], references: [parts.id] }),
+  material: one(orgMaterials, {
+    fields: [partMaterials.materialId],
+    references: [orgMaterials.id],
+  }),
+}));
+
+export const orgMaterialsRelations = relations(orgMaterials, ({ one }) => ({
+  org: one(orgs, { fields: [orgMaterials.orgId], references: [orgs.id] }),
 }));
 
 export const quotesRelations = relations(quotes, ({ one, many }) => ({

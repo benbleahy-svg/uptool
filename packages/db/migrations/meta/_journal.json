@@ -197,6 +197,13 @@
       "when": 1780683930686,
       "tag": "0027_tidy_the_executioner",
       "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1780744524129,
+      "tag": "0028_thin_quentin_quire",
+      "breakpoints": true
     }
   ]
 }
