@@ -2,9 +2,45 @@
 
 ## next build: /404, /500, and /_not-found prerender failure
 
-**Status:** OPEN. Pre-existing; not introduced by feature work. `next dev`
-is unaffected — only `next build` (production prerender of the internal
-error/not-found pages) fails. Tests pass; feature development unblocked.
+**Status:** ✅ RESOLVED (June 2026) — fixed by upgrading **Next 15.5.18 → 16.2.7**
+and **next-intl 3.26 → 4.13.0** together. `next build` now completes cleanly
+(exit 0, all 12 pages generated, `/_not-found` server-rendered on demand with no
+prerender error). tsc clean across all 6 packages; `next dev` routing, auth,
+i18n, and locale switching all verified working.
+
+### Resolution
+
+Both fixes were required together (neither alone worked — see "Ruled out" below):
+
+- **Next 16** builds with **Turbopack** by default and reworks error-page/export
+  handling, clearing the original `<Html> should not be imported` layers.
+- **next-intl v4** is the piece that actually fixes the `/_not-found` prerender.
+  Under Next 16, next-intl **v3**'s plugin registered the `next-intl/config`
+  resolve alias under the now-removed `experimental.turbo` key (Next 16 renamed
+  it to top-level `turbopack` and ignores the old one), so prerender of
+  `/_not-found` failed with *"Couldn't find next-intl config file."* v4's plugin
+  detects Next ≥16 and emits the correct top-level `turbopack.resolveAlias` — no
+  manual `next.config.ts` change needed.
+
+The v4 migration was low-touch here: the app uses next-intl only for
+translations (`getRequestConfig`, `getTranslations`/`getLocale`/`getMessages`,
+`useTranslations`, `NextIntlClientProvider`), **not** its routing/navigation/
+middleware APIs, so the breaking v4 routing changes didn't apply. `i18n/request.ts`
+already returned `locale` (v4's requirement) and needed no change.
+
+**Deferred (non-blocking):** Next 16 warns that the `middleware` file convention
+is deprecated in favour of `proxy`. Our `middleware.ts` is a next-auth middleware
+(unrelated to next-intl) and still works — rename to `proxy.ts` is a separate
+cleanup. `@sentry/nextjs` 8.x and `react-pdf@7` peer warnings are likewise
+pre-existing/out of scope.
+
+---
+
+### Historical diagnosis (pre-fix, kept for context)
+
+**Status was:** OPEN. Pre-existing; not introduced by feature work. `next dev`
+was unaffected — only `next build` (production prerender of the internal
+error/not-found pages) failed. Tests passed; feature development unblocked.
 
 **Symptom:** `next build` fails on the static-export step with:
   `<Html> should not be imported outside of pages/_document`
