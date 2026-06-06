@@ -1,6 +1,7 @@
 import { db, } from "@uptool/db";
 import { isManufacturingFile } from "@uptool/shared";
 import { blockListService } from "./block-list";
+import { partService } from "./part";
 import { rfqService } from "./rfq";
 
 export interface IngestPayload {
@@ -68,7 +69,7 @@ export const emailIngestService = {
     );
     if (!hasManufacturingAttachments) return "skipped";
 
-    await rfqService.createFromEmail({
+    const rfq = await rfqService.createFromEmail({
       orgId: payload.orgId,
       emailAccountId: payload.emailAccountId,
       provider: payload.provider,
@@ -82,6 +83,16 @@ export const emailIngestService = {
       receivedAt: payload.receivedAt,
       attachmentFiles: payload.attachments,
     });
+
+    // Auto-create one part per manufacturing file (CAD + matching drawing).
+    // Best-effort: a failure here must NOT fail the ingest — the RFQ and its
+    // attachments are already committed; the estimator can add parts manually.
+    // The RFQ stays in status "new" (no advanceToEstimated — nothing is estimated yet).
+    try {
+      await partService.createPartsFromAttachments(payload.orgId, rfq.id);
+    } catch (err) {
+      console.error(`[ingest] auto-part creation failed for rfq ${rfq.id}:`, err);
+    }
 
     return "created";
   },

@@ -1,5 +1,6 @@
 import { attachments, db, partOperations, parts } from "@uptool/db";
-import { and, eq, isNull, or } from "drizzle-orm";
+import { groupAttachmentsIntoParts } from "@uptool/shared";
+import { and, eq, inArray, isNull, or } from "drizzle-orm";
 
 export const DEFAULT_QUANTITY_BREAKS = [1, 10, 100] as const;
 
@@ -73,6 +74,54 @@ export const partService = {
 
   async delete(orgId: string, partId: string) {
     await db.delete(parts).where(and(eq(parts.id, partId), eq(parts.orgId, orgId)));
+  },
+
+  /**
+   * Auto-create parts from an ingested RFQ's stored attachments. Groups files by
+   * filename stem (one part per CAD file; a drawing PDF links to the CAD with the
+   * matching stem, else becomes its own part), sets part_number to the title-cased
+   * stem and process_type from the primary extension, and links each attachment.
+   *
+   * Runs in one transaction so a partial failure rolls back cleanly. The caller
+   * (ingest) wraps this in try/catch — a failure must NOT fail the ingest, so the
+   * RFQ + attachments survive with no parts. Returns the created part ids.
+   */
+  async createPartsFromAttachments(orgId: string, rfqId: string): Promise<string[]> {
+    const files = await db
+      .select({ id: attachments.id, filename: attachments.filename })
+      .from(attachments)
+      .where(and(eq(attachments.orgId, orgId), eq(attachments.rfqId, rfqId)));
+
+    const groups = groupAttachmentsIntoParts(files);
+    if (groups.length === 0) return [];
+
+    return db.transaction(async (tx) => {
+      const createdIds: string[] = [];
+      let sortOrder = 1;
+      for (const group of groups) {
+        const [part] = await tx
+          .insert(parts)
+          .values({
+            orgId,
+            rfqId,
+            partNumber: group.name,
+            processType: group.processType,
+            sortOrder,
+          })
+          .returning({ id: parts.id });
+        if (!part) throw new Error("Failed to create part");
+        createdIds.push(part.id);
+        sortOrder += 1;
+
+        await tx
+          .update(attachments)
+          .set({ partId: part.id })
+          .where(
+            and(eq(attachments.orgId, orgId), inArray(attachments.id, group.attachmentIds)),
+          );
+      }
+      return createdIds;
+    });
   },
 
   /**
