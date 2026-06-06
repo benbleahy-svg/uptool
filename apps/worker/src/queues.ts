@@ -12,6 +12,7 @@ export const QUEUE_NAMES = {
   POLL_EMAIL_ACCOUNT: "poll-email-account",
   INGEST_EMAIL: "ingest-email",
   RENDER_CAD_THUMBNAIL: "render-cad-thumbnail",
+  EXTRACT_PART_GEOMETRY: "extract-part-geometry",
 } as const;
 
 export const helloWorldQueue = new Queue(QUEUE_NAMES.HELLO_WORLD, { connection });
@@ -19,6 +20,7 @@ export const helloWorldQueue = new Queue(QUEUE_NAMES.HELLO_WORLD, { connection }
 // (email-poll-scheduler); the worker only consumes them. No producer Queue here.
 export const ingestEmailQueue = new Queue(QUEUE_NAMES.INGEST_EMAIL, { connection });
 export const renderCadThumbnailQueue = new Queue(QUEUE_NAMES.RENDER_CAD_THUMBNAIL, { connection });
+export const extractPartGeometryQueue = new Queue(QUEUE_NAMES.EXTRACT_PART_GEOMETRY, { connection });
 
 export interface PollEmailAccountJobData {
   emailAccountId: string;
@@ -51,4 +53,12 @@ export interface RenderCadThumbnailJobData {
   attachmentId: string;
   storageKey: string; // CAD object key (immutable — safe to carry on the job)
   filename: string; // for the extension; the renderer keys off it
+}
+
+export interface ExtractPartGeometryJobData {
+  orgId: string;
+  partId: string;
+  attachmentId: string;
+  storageKey: string; // CAD/DXF object key (immutable — safe to carry on the job)
+  filename: string; // extractor dispatches on the extension
 }

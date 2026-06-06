@@ -7,6 +7,7 @@ import {
 import { helloWorldProcessor } from "./processors/hello-world";
 import { pollEmailAccountProcessor } from "./processors/poll-email-account";
 import { ingestEmailProcessor } from "./processors/ingest-email";
+import { extractPartGeometryProcessor } from "./processors/extract-part-geometry";
 import {
   closeRenderer,
   renderCadThumbnailProcessor,
@@ -29,12 +30,20 @@ const renderCadWorker = new Worker(
   renderCadThumbnailProcessor,
   { connection, concurrency: 2 },
 );
+// Geometry extraction is pure WASM/CPU (occt) or DXF parsing — no browser, so it
+// can run a bit wider than the rendering worker.
+const extractGeometryWorker = new Worker(
+  QUEUE_NAMES.EXTRACT_PART_GEOMETRY,
+  extractPartGeometryProcessor,
+  { connection, concurrency: 4 },
+);
 
 for (const [worker, name] of [
   [helloWorker, QUEUE_NAMES.HELLO_WORLD],
   [pollWorker, QUEUE_NAMES.POLL_EMAIL_ACCOUNT],
   [ingestWorker, QUEUE_NAMES.INGEST_EMAIL],
   [renderCadWorker, QUEUE_NAMES.RENDER_CAD_THUMBNAIL],
+  [extractGeometryWorker, QUEUE_NAMES.EXTRACT_PART_GEOMETRY],
 ] as const) {
   worker.on("completed", (job) => logger.info({ jobId: job.id, queue: name }, "Job completed"));
   worker.on("failed", (job, err) =>
@@ -63,6 +72,7 @@ async function shutdown() {
     pollWorker.close(),
     ingestWorker.close(),
     renderCadWorker.close(),
+    extractGeometryWorker.close(),
   ]);
   await closeRenderer();
   process.exit(0);

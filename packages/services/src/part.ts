@@ -33,6 +33,20 @@ export interface CostAtQty {
   costPerUnitCents: number;
 }
 
+/** Extracted geometry written by markGeometryReady. STEP files populate the bbox /
+ *  volume / surface-area fields; DXF files populate cutLength / pierce / bend. Only
+ *  the fields the extractor produced are set — omitted keys are left untouched. */
+export interface GeometryResult {
+  bboxXMm?: number | null;
+  bboxYMm?: number | null;
+  bboxZMm?: number | null;
+  volumeMm3?: number | null;
+  surfaceAreaMm2?: number | null;
+  cutLengthMm?: number | null;
+  pierceCount?: number | null;
+  bendCount?: number | null;
+}
+
 export const partService = {
   async create(input: CreatePartInput) {
     const [part] = await db
@@ -316,6 +330,84 @@ export const partService = {
     await db
       .update(parts)
       .set({ thumbnailStatus: "failed" })
+      .where(and(eq(parts.id, partId), eq(parts.orgId, orgId)));
+  },
+
+  // ─── CAD geometry extraction pipeline ────────────────────────────────────
+  // Geometry is extracted off the request path by the worker (see apps/worker
+  // extract-part-geometry). status: null = not extracted, 'pending' = queued,
+  // 'processing' = job running, 'ready' = numbers written, 'failed' = retryable.
+
+  /**
+   * Parts that have a CAD/DXF file but no usable geometry yet (never extracted or
+   * the last extraction failed). Drives idempotent enqueue-on-load + retry. Mirrors
+   * findPartsNeedingThumbnail; the producer derives the extension from `filename`.
+   */
+  async findPartsNeedingGeometry(orgId: string, rfqId?: string) {
+    return db
+      .select({
+        partId: parts.id,
+        attachmentId: attachments.id,
+        storageKey: attachments.storageKey,
+        filename: attachments.filename,
+      })
+      .from(parts)
+      .innerJoin(
+        attachments,
+        and(eq(attachments.partId, parts.id), eq(attachments.category, "cad")),
+      )
+      .where(
+        and(
+          eq(parts.orgId, orgId),
+          rfqId ? eq(parts.rfqId, rfqId) : undefined,
+          or(isNull(parts.geometryStatus), eq(parts.geometryStatus, "failed")),
+        ),
+      );
+  },
+
+  async markGeometryPending(orgId: string, partId: string) {
+    await db
+      .update(parts)
+      .set({ geometryStatus: "pending" })
+      .where(and(eq(parts.id, partId), eq(parts.orgId, orgId)));
+  },
+
+  async markGeometryProcessing(orgId: string, partId: string) {
+    await db
+      .update(parts)
+      .set({ geometryStatus: "processing" })
+      .where(and(eq(parts.id, partId), eq(parts.orgId, orgId)));
+  },
+
+  /** Persist extracted geometry (only the fields the extractor produced) and mark
+   *  the part 'ready'. STEP yields bbox/volume/surface area; DXF yields cut length
+   *  + pierce/bend counts. Unsupported files mark ready with all-null geometry. */
+  async markGeometryReady(orgId: string, partId: string, result: GeometryResult) {
+    await db
+      .update(parts)
+      .set({
+        geometryStatus: "ready",
+        geometryExtractedAt: new Date(),
+        ...(result.bboxXMm !== undefined && { geometryBboxXMm: result.bboxXMm }),
+        ...(result.bboxYMm !== undefined && { geometryBboxYMm: result.bboxYMm }),
+        ...(result.bboxZMm !== undefined && { geometryBboxZMm: result.bboxZMm }),
+        ...(result.volumeMm3 !== undefined && { geometryVolumeMm3: result.volumeMm3 }),
+        ...(result.surfaceAreaMm2 !== undefined && {
+          geometrySurfaceAreaMm2: result.surfaceAreaMm2,
+        }),
+        ...(result.cutLengthMm !== undefined && { geometryCutLengthMm: result.cutLengthMm }),
+        ...(result.pierceCount !== undefined && { geometryPierceCount: result.pierceCount }),
+        ...(result.bendCount !== undefined && { geometryBendCount: result.bendCount }),
+      })
+      .where(and(eq(parts.id, partId), eq(parts.orgId, orgId)));
+  },
+
+  /** Mark extraction failed. `reason` is logged by the caller; there is no error
+   *  column, so only the status is persisted (the part stays retryable). */
+  async markGeometryFailed(orgId: string, partId: string, _reason?: string) {
+    await db
+      .update(parts)
+      .set({ geometryStatus: "failed" })
       .where(and(eq(parts.id, partId), eq(parts.orgId, orgId)));
   },
 

@@ -32,7 +32,7 @@ export {
 } from "./email-sender";
 export type { EmailSendAdapter, SendQuoteEmailParams } from "./email-sender";
 export { partService, DEFAULT_QUANTITY_BREAKS } from "./part";
-export type { CreatePartInput, CreateOperationInput, CostAtQty } from "./part";
+export type { CreatePartInput, CreateOperationInput, CostAtQty, GeometryResult } from "./part";
 export { quoteService } from "./quote";
 export type { CreateQuoteInput } from "./quote";
 export type { AddQuoteLineItemInput, UpdateQuoteLineItemInput } from "./quote-schemas";

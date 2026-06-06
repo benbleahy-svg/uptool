@@ -3,6 +3,7 @@ import {
   type AnyPgColumn,
   boolean,
   check,
+  doublePrecision,
   index,
   integer,
   jsonb,
@@ -10,6 +11,7 @@ import {
   pgEnum,
   pgTable,
   primaryKey,
+  real,
   text,
   timestamp,
   unique,
@@ -524,6 +526,19 @@ export const parts = pgTable(
     // null status = no CAD linked yet.
     thumbnailKey: text("thumbnail_key"),
     thumbnailStatus: text("thumbnail_status"),
+    // Geometry extracted off the request path by the worker (see apps/worker
+    // extract-part-geometry). null status = not extracted yet. STEP files yield
+    // bbox/volume/surface area; DXF files yield cut length/pierce/bend counts.
+    geometryStatus: text("geometry_status"),
+    geometryBboxXMm: real("geometry_bbox_x_mm"),
+    geometryBboxYMm: real("geometry_bbox_y_mm"),
+    geometryBboxZMm: real("geometry_bbox_z_mm"),
+    geometryVolumeMm3: doublePrecision("geometry_volume_mm3"),
+    geometrySurfaceAreaMm2: doublePrecision("geometry_surface_area_mm2"),
+    geometryCutLengthMm: doublePrecision("geometry_cut_length_mm"),
+    geometryPierceCount: integer("geometry_pierce_count"),
+    geometryBendCount: integer("geometry_bend_count"),
+    geometryExtractedAt: timestamp("geometry_extracted_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
@@ -532,6 +547,10 @@ export const parts = pgTable(
     check(
       "parts_thumbnail_status_check",
       sql`${t.thumbnailStatus} IS NULL OR ${t.thumbnailStatus} IN ('pending', 'ready', 'failed')`,
+    ),
+    check(
+      "parts_geometry_status_check",
+      sql`${t.geometryStatus} IS NULL OR ${t.geometryStatus} IN ('pending', 'processing', 'ready', 'failed')`,
     ),
   ],
 );

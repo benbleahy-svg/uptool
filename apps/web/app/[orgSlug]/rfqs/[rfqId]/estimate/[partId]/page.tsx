@@ -1,4 +1,5 @@
 import { requireAuth } from "@/lib/auth";
+import { ensureGeometry } from "@/lib/cad-geometry-queue";
 import { resolveRfq } from "@/lib/resolve-rfq";
 import { type DerivedRfqStatus, getRfqStatus } from "@/lib/rfq-status";
 import { db } from "@uptool/db";
@@ -55,6 +56,11 @@ export default async function EstimatePartPage({ params }: Props) {
   if (!dbPart || dbPart.rfqId !== rfq.id) {
     return <NotFound message="This part isn’t part of this RFQ." />;
   }
+
+  // Kick off CAD/DXF geometry extraction off the request path (idempotent; skips
+  // parts already extracted/in-flight). Mirrors the dashboard's ensureThumbnails —
+  // a queue/Redis hiccup must never block the estimate page.
+  await ensureGeometry(org.id, rfq.id).catch(() => {});
 
   const rfqStatus: DerivedRfqStatus = getRfqStatus(rfq);
   const partIds = (rfq.parts ?? [])
