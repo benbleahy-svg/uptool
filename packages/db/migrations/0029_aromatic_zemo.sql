@@ -1,0 +1,2 @@
+ALTER TABLE "operation_templates" ADD COLUMN "cost_category" text DEFAULT 'inside' NOT NULL;--> statement-breakpoint
+ALTER TABLE "operation_templates" ADD CONSTRAINT "operation_templates_cost_category_check" CHECK ("operation_templates"."cost_category" IN ('inside', 'outside', 'purchased'));

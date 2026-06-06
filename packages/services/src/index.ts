@@ -43,7 +43,18 @@ export type { EmailTemplateEntry, EmailTemplateKey, EmailTemplates } from "./ema
 export { replyService } from "./reply";
 export type { RecordOutboundInput } from "./reply";
 export { templateService } from "./template";
-export type { CreateTemplateInput } from "./template";
+export type {
+  CreateTemplateInput,
+  UpdateTemplateInput,
+  OperationTemplateType,
+  CostCategory,
+} from "./template";
+export { orgMaterialService, MATERIAL_CATEGORIES } from "./org-material";
+export type {
+  CreateOrgMaterialInput,
+  UpdateOrgMaterialInput,
+  MaterialCategory,
+} from "./org-material";
 export { memberService } from "./member";
 export type { OrgMember } from "./member";
 export { estimateService } from "./estimate";

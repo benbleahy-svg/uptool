@@ -9,8 +9,15 @@
 // Laser Cutting / Finishing keep their existing placeholder formulae (no rate
 // panel / discount / markup) until their real models land. See ADR 0017.
 
-import { getHourlyRate } from "@/app/[orgSlug]/settings/calculator-templates/rates";
 import { type MaterialCard, materialIsComplete } from "./materialCost";
+
+/** Cost bucket for the price breakdown — mirrors part_operations.cost_category. */
+export type CostCategory = "inside" | "outside" | "purchased";
+
+/** Fallback €/h when an operation has no per-op rate (setup_rate_cents /
+ *  runtime_rate_cents are null). Mirrors services DEFAULT_HOURLY_RATE_CENTS (8000).
+ *  A populated rate comes from the org's operation_templates via hydration. */
+export const DEFAULT_HOURLY_RATE_EUR = 80;
 
 export type OperationType =
   | "programming"
@@ -44,7 +51,7 @@ export interface OpTypeDef {
   name: string;
   fields: OpFieldDef[];
   nonRecurring: boolean;
-  outside: boolean;
+  costCategory: CostCategory;
 }
 
 /** A volume-discount tier: at qty ≥ `qty`, knock `discountPct`% off per-unit cost. */
@@ -70,12 +77,10 @@ export interface Operation {
   collapsed: boolean;
   fields: Record<string, string>;
   nonRecurring: boolean;
-  outside: boolean;
-  /** Hourly-rate ids (from the calculator-templates rates source). */
-  setupRateId: string;
-  runtimeRateId: string;
-  /** Per-operation €/h overrides of the selected rate. Empty = use the configured
-   *  default; clearing reverts to it. */
+  /** Cost bucket for the breakdown; persisted as part_operations.cost_category. */
+  costCategory: CostCategory;
+  /** Per-operation €/h rates (persisted as setup_rate_cents / runtime_rate_cents).
+   *  Empty = no rate set; the cost engine falls back to DEFAULT_HOURLY_RATE_EUR. */
   setupRate: string;
   runtimeRate: string;
   /** Whether the volume-discount tier table is active. */
@@ -158,7 +163,7 @@ export const OPERATION_CATALOGUE: Record<OperationType, OpTypeDef> = {
     type: "programming",
     name: "Programming",
     nonRecurring: true,
-    outside: false,
+    costCategory: "inside",
     fields: [
       {
         key: "time",
@@ -175,7 +180,7 @@ export const OPERATION_CATALOGUE: Record<OperationType, OpTypeDef> = {
     type: "laser-cutting",
     name: "Laser Cutting",
     nonRecurring: false,
-    outside: false,
+    costCategory: "inside",
     fields: [
       {
         key: "material",
@@ -261,21 +266,21 @@ export const OPERATION_CATALOGUE: Record<OperationType, OpTypeDef> = {
     type: "deburr",
     name: "Deburr",
     nonRecurring: false,
-    outside: false,
+    costCategory: "inside",
     fields: [setupTime, runTime],
   },
   bending: {
     type: "bending",
     name: "Bending",
     nonRecurring: false,
-    outside: false,
+    costCategory: "inside",
     fields: [setupTime, runTime],
   },
   finishing: {
     type: "finishing",
     name: "Finishing (new)",
     nonRecurring: false,
-    outside: true,
+    costCategory: "outside",
     fields: [
       {
         key: "finishingProcess",
@@ -319,28 +324,28 @@ export const OPERATION_CATALOGUE: Record<OperationType, OpTypeDef> = {
     type: "inspection",
     name: "QA / Inspection",
     nonRecurring: false,
-    outside: false,
+    costCategory: "inside",
     fields: [setupTime, runTime],
   },
   "cnc-milling": {
     type: "cnc-milling",
     name: "CNC Milling",
     nonRecurring: false,
-    outside: false,
+    costCategory: "inside",
     fields: [setupTime, runTime],
   },
   "pack-and-ship": {
     type: "pack-and-ship",
     name: "Packaging & Shipping",
     nonRecurring: false,
-    outside: false,
+    costCategory: "inside",
     fields: [setupTime, runTime],
   },
   generic: {
     type: "generic",
     name: "Operation",
     nonRecurring: false,
-    outside: false,
+    costCategory: "inside",
     fields: [setupTime, runTime],
   },
 };
@@ -373,9 +378,7 @@ export function createOperation(
     collapsed: false,
     fields,
     nonRecurring: def.nonRecurring,
-    outside: def.outside,
-    setupRateId: "default",
-    runtimeRateId: "default",
+    costCategory: def.costCategory,
     setupRate: "",
     runtimeRate: "",
     volumeDiscount: false,
@@ -417,9 +420,16 @@ function markupFraction(op: Operation): number {
   return num(op.markupPct) / 100;
 }
 
-/** Effective €/h: the per-operation override if set, else the configured default. */
-export function effectiveRate(rateId: string, override: string): number {
-  return override.trim() !== "" ? num(override) : getHourlyRate(rateId).eurPerHour;
+/** Effective €/h for an operation: the per-op rate if set, else the default €80/h
+ *  (warned, so a missing template-seeded rate is visible in dev). */
+export function effectiveRate(rate: string): number {
+  if (rate.trim() !== "") return num(rate);
+  if (typeof console !== "undefined") {
+    console.warn(
+      `[operationCost] no per-operation rate set — falling back to €${DEFAULT_HOURLY_RATE_EUR}/h`,
+    );
+  }
+  return DEFAULT_HOURLY_RATE_EUR;
 }
 
 /** Raw (pre-discount, pre-markup) PER-UNIT cost from the time/legacy formula. */
@@ -433,11 +443,11 @@ function computedRawPerUnit(op: Operation, qty: number): number {
       return qty > 0 ? total / qty : 0;
     }
     const { setupMin, runMin } = timeFor(op);
-    return ((qty > 0 ? setupMin / qty : 0) + runMin) * (getHourlyRate("default").eurPerHour / 60);
+    return ((qty > 0 ? setupMin / qty : 0) + runMin) * (DEFAULT_HOURLY_RATE_EUR / 60);
   }
   const { setupMin, runMin } = timeFor(op);
-  const setupRate = effectiveRate(op.setupRateId, op.setupRate);
-  const runtimeRate = effectiveRate(op.runtimeRateId, op.runtimeRate);
+  const setupRate = effectiveRate(op.setupRate);
+  const runtimeRate = effectiveRate(op.runtimeRate);
   const rawTotal = (setupMin / 60) * setupRate + ((runMin * qty) / 60) * runtimeRate;
   return qty > 0 ? rawTotal / qty : 0;
 }

@@ -1,8 +1,8 @@
 "use client";
 
-import { HOURLY_RATES, getHourlyRate } from "@/app/[orgSlug]/settings/calculator-templates/rates";
 import { formatAmount, parseDecimal } from "@/lib/quoting/materialCost";
 import {
+  DEFAULT_HOURLY_RATE_EUR,
   DEFAULT_VOLUME_TIERS,
   type Operation,
   type VolumeTier,
@@ -53,19 +53,15 @@ export function OperationDetailPanel({ op, quantities, onChange }: Props) {
           {hasSetup && (
             <RateField
               label="Setup Rate"
-              rateId={op.setupRateId}
-              override={op.setupRate}
-              onRateIdChange={(setupRateId) => onChange({ setupRateId })}
-              onOverrideChange={(setupRate) => onChange({ setupRate })}
+              rate={op.setupRate}
+              onRateChange={(setupRate) => onChange({ setupRate })}
             />
           )}
           {hasRun && (
             <RateField
               label="Runtime Rate"
-              rateId={op.runtimeRateId}
-              override={op.runtimeRate}
-              onRateIdChange={(runtimeRateId) => onChange({ runtimeRateId })}
-              onOverrideChange={(runtimeRate) => onChange({ runtimeRate })}
+              rate={op.runtimeRate}
+              onRateChange={(runtimeRate) => onChange({ runtimeRate })}
             />
           )}
         </div>
@@ -181,23 +177,20 @@ function TierInput({
   );
 }
 
-/** Editable hourly rate: the €/h amount can be edited per operation; it defaults
- *  to the configured rate and reverts to it when cleared (or via the reset icon). */
+/** Editable hourly rate: the per-operation €/h amount (persisted as
+ *  setup_rate_cents / runtime_rate_cents). Empty shows the €80/h fallback in grey;
+ *  any edit is the operation's own rate (blue) and the reset icon clears it back. */
 function RateField({
   label,
-  rateId,
-  override,
-  onRateIdChange,
-  onOverrideChange,
+  rate,
+  onRateChange,
 }: {
   label: string;
-  rateId: string;
-  override: string;
-  onRateIdChange: (id: string) => void;
-  onOverrideChange: (value: string) => void;
+  rate: string;
+  onRateChange: (value: string) => void;
 }) {
-  const overridden = override.trim() !== "";
-  const display = overridden ? override : formatRateAmount(getHourlyRate(rateId).eurPerHour);
+  const hasRate = rate.trim() !== "";
+  const display = hasRate ? rate : formatRateAmount(DEFAULT_HOURLY_RATE_EUR);
   return (
     <div>
       <div className="text-xs text-gray-500">{label}</div>
@@ -205,37 +198,25 @@ function RateField({
         <span className="text-gray-500">€</span>
         <input
           value={display}
-          onChange={(e) => onOverrideChange(e.target.value)}
+          onChange={(e) => onRateChange(e.target.value)}
           inputMode="decimal"
           aria-label={`${label} (€/h)`}
           className={cn(
             "w-12 rounded border border-transparent bg-transparent px-0.5 text-right text-sm font-medium tabular-nums outline-none hover:border-gray-200 focus:border-gray-300 focus:bg-white",
-            overridden ? "text-blue-600" : "text-gray-900",
+            hasRate ? "text-blue-600" : "text-gray-900",
           )}
         />
         <span className="text-gray-500">/h</span>
-        {overridden && (
+        {hasRate && (
           <button
             type="button"
-            onClick={() => onOverrideChange("")}
+            onClick={() => onRateChange("")}
             aria-label={`Reset ${label} to default`}
             className="text-gray-300 transition-colors hover:text-gray-600"
           >
             <RotateCcw className="h-3 w-3" />
           </button>
         )}
-        <select
-          value={rateId}
-          onChange={(e) => onRateIdChange(e.target.value)}
-          aria-label={`${label} source`}
-          className="cursor-pointer appearance-none rounded bg-transparent py-0.5 text-sm text-gray-500 outline-none"
-        >
-          {HOURLY_RATES.map((r) => (
-            <option key={r.id} value={r.id}>
-              {r.label}
-            </option>
-          ))}
-        </select>
       </div>
     </div>
   );

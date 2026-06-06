@@ -88,7 +88,13 @@ describe("opPatchToSaves", () => {
       { key: "setupRateCents", kind: "update", patch: { setupRateCents: null } },
     ]);
     expect(opPatchToSaves(base, { collapsed: true })).toEqual([]);
-    expect(opPatchToSaves(base, { setupRateId: "default" })).toEqual([]);
+    expect(opPatchToSaves(base, { note: "n/a" })).toEqual([]);
+  });
+
+  test("costCategory patch → one update save", () => {
+    expect(opPatchToSaves(base, { costCategory: "outside" })).toEqual([
+      { key: "costCategory", kind: "update", patch: { costCategory: "outside" } },
+    ]);
   });
 });
 

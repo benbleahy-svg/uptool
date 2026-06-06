@@ -24,9 +24,12 @@ export const leadTimeVariantSchema = z.object({
 });
 export type LeadTimeVariant = z.infer<typeof leadTimeVariantSchema>;
 
+export const costCategorySchema = z.enum(["inside", "outside", "purchased"]);
+
 export const addOperationSchema = z.object({
   name: z.string().min(1),
   operationType: z.string().min(1).optional(),
+  costCategory: costCategorySchema.optional(),
   setupMinutes: minutes.optional(),
   runMinutes: minutes.optional(),
   hourlyRateCents: cents.optional(),
@@ -40,6 +43,7 @@ export type AddOperationInput = z.infer<typeof addOperationSchema>;
 export const updateOperationSchema = z
   .object({
     name: z.string().min(1),
+    costCategory: costCategorySchema,
     setupMinutes: minutes,
     runMinutes: minutes,
     isNonRecurring: z.boolean(),

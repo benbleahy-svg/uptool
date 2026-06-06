@@ -74,7 +74,7 @@ export const estimateService = {
       if (!part) throw new NotFoundError("Part not found");
       if (part.hydratedAt) return; // already hydrated → no-op
 
-      const ops = buildDefaultOperations();
+      const ops = await buildDefaultOperations(orgId);
       if (ops.length > 0) {
         await tx.insert(partOperations).values(
           ops.map((o) => ({
@@ -82,9 +82,12 @@ export const estimateService = {
             partId,
             name: o.name,
             operationType: o.operationType,
+            costCategory: o.costCategory,
             setupMinutes: o.setupMinutes,
             runMinutes: o.runMinutes,
             hourlyRateCents: o.hourlyRateCents,
+            setupRateCents: o.setupRateCents,
+            runtimeRateCents: o.runtimeRateCents,
             isNonRecurring: o.isNonRecurring,
             sortOrder: o.sortOrder,
           })),
@@ -136,6 +139,7 @@ export const estimateService = {
         partId,
         name: data.name,
         operationType: data.operationType ?? "machining",
+        costCategory: data.costCategory ?? "inside",
         setupMinutes: String(data.setupMinutes ?? 0),
         runMinutes: String(data.runMinutes ?? 0),
         hourlyRateCents: data.hourlyRateCents ?? DEFAULT_HOURLY_RATE_CENTS,
@@ -161,6 +165,7 @@ export const estimateService = {
     const data = parseOrThrow(updateOperationSchema, patch);
     const set: Record<string, unknown> = {};
     if (data.name !== undefined) set.name = data.name;
+    if (data.costCategory !== undefined) set.costCategory = data.costCategory;
     if (data.setupMinutes !== undefined) set.setupMinutes = String(data.setupMinutes);
     if (data.runMinutes !== undefined) set.runMinutes = String(data.runMinutes);
     if (data.isNonRecurring !== undefined) set.isNonRecurring = data.isNonRecurring;

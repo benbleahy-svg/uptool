@@ -82,7 +82,7 @@ export type CostShares = Record<BreakdownKey, number>;
 export function getCostShares(partId: string, qty: number): CostShares {
   const inputs = PART_INPUTS[partId] ?? P1;
   const { total, segments } = computeBreakdown(inputs.materials, inputs.operations, qty);
-  const shares = { materials: 0, nr: 0, recurring: 0, outside: 0 } as CostShares;
+  const shares = { materials: 0, nr: 0, recurring: 0, outside: 0, purchased: 0 } as CostShares;
   for (const seg of segments) {
     shares[seg.key] = total > 0 ? seg.value / total : 0;
   }

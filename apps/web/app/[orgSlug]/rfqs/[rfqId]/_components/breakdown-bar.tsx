@@ -4,13 +4,14 @@ import type { BreakdownKey, BreakdownSegment } from "@/lib/quoting/estimateTotal
 import { formatAmount } from "@/lib/quoting/materialCost";
 import { Tooltip, TooltipContent, TooltipTrigger, cn } from "@uptool/ui";
 
-// Shared four-category price-breakdown bar. Used by the estimate per-part hover
-// (Prompt 4) and the quote selected-totals summary. Takes generic segments.
+// Shared price-breakdown bar. Used by the estimate per-part hover (Prompt 4) and
+// the quote selected-totals summary. Takes generic segments.
 const SEGMENT_BG: Record<BreakdownKey, string> = {
   materials: "bg-green-300",
   nr: "bg-amber-300",
   recurring: "bg-blue-300",
   outside: "bg-rose-300",
+  purchased: "bg-violet-300",
 };
 
 const AXIS_TICKS = [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100];

@@ -704,6 +704,8 @@ export const operationTemplates = pgTable(
       .references(() => orgs.id, { onDelete: "cascade" }),
     name: text("name").notNull(),
     operationType: text("operation_type").notNull().default("machining"),
+    // Cost bucket applied to part_operations seeded/created from this template.
+    costCategory: text("cost_category").notNull().default("inside"),
     defaultSetupMinutes: numeric("default_setup_minutes").notNull().default("0"),
     defaultRunMinutes: numeric("default_run_minutes").notNull().default("0"),
     defaultHourlyRateCents: integer("default_hourly_rate_cents").notNull().default(0),
@@ -711,7 +713,13 @@ export const operationTemplates = pgTable(
     lastUsedAt: timestamp("last_used_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [index("idx_operation_templates_org").on(t.orgId)],
+  (t) => [
+    index("idx_operation_templates_org").on(t.orgId),
+    check(
+      "operation_templates_cost_category_check",
+      sql`${t.costCategory} IN ('inside', 'outside', 'purchased')`,
+    ),
+  ],
 );
 
 // Per-org materials library. Anchors part_materials cards to a named material with

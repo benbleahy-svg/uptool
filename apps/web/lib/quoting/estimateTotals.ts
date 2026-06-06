@@ -28,7 +28,7 @@ export function computeTotals(
   return { total, perUnit: qty > 0 ? total / qty : 0 };
 }
 
-export type BreakdownKey = "materials" | "nr" | "recurring" | "outside";
+export type BreakdownKey = "materials" | "nr" | "recurring" | "outside" | "purchased";
 
 export interface BreakdownSegment {
   key: BreakdownKey;
@@ -61,6 +61,7 @@ export const SEGMENT_META: { key: BreakdownKey; shortLabel: string; fullLabel: s
     fullLabel: "Recurring Internal Operations",
   },
   { key: "outside", shortLabel: "Outside Services", fullLabel: "Outside Services" },
+  { key: "purchased", shortLabel: "Purchased Parts", fullLabel: "Purchased Parts" },
 ];
 
 /** Build labelled segments from raw per-category values (e.g. an aggregate). */
@@ -78,15 +79,20 @@ export function computeBreakdown(
   const sum = (list: Operation[]) =>
     list.reduce((s, o) => s + computeOperationCost(o, qty).total, 0);
 
+  // Disjoint buckets keyed on cost_category so every op lands in exactly one
+  // segment (internal ops split by recurrence): inside+NR, inside+recurring,
+  // outside, purchased. Sum of segments = materials + all complete ops.
+  const isInside = (o: Operation) => o.costCategory === "inside";
   const materialsTotal = materials.reduce((s, m) => s + computeMaterialCost(m, qty).total, 0);
-  const nrInternal = sum(ops.filter((o) => o.nonRecurring && !o.outside));
-  const recurringInternal = sum(ops.filter((o) => !o.nonRecurring && !o.outside));
-  const outside = sum(ops.filter((o) => o.outside));
+  const nrInternal = sum(ops.filter((o) => isInside(o) && o.nonRecurring));
+  const recurringInternal = sum(ops.filter((o) => isInside(o) && !o.nonRecurring));
+  const outside = sum(ops.filter((o) => o.costCategory === "outside"));
+  const purchased = sum(ops.filter((o) => o.costCategory === "purchased"));
   const totalTimeMin = ops.reduce((s, o) => s + operationTimeMinutes(o, qty), 0);
 
   return {
     totalTimeHr: totalTimeMin / 60,
-    total: materialsTotal + nrInternal + recurringInternal + outside,
+    total: materialsTotal + nrInternal + recurringInternal + outside + purchased,
     segments: [
       {
         key: "materials",
@@ -111,6 +117,12 @@ export function computeBreakdown(
         shortLabel: "Outside Services",
         fullLabel: "Outside Services",
         value: outside,
+      },
+      {
+        key: "purchased",
+        shortLabel: "Purchased Parts",
+        fullLabel: "Purchased Parts",
+        value: purchased,
       },
     ],
   };

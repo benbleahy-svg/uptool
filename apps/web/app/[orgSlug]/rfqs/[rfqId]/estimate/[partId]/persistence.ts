@@ -60,9 +60,7 @@ export function dbOperationToClient(row: PartOperation): Operation {
     collapsed: true,
     fields,
     nonRecurring: row.isNonRecurring,
-    outside: OPERATION_CATALOGUE[type].outside,
-    setupRateId: "default",
-    runtimeRateId: "default",
+    costCategory: row.costCategory as Operation["costCategory"],
     setupRate: centsToEuro(row.setupRateCents),
     runtimeRate: centsToEuro(row.runtimeRateCents),
     volumeDiscount: row.volumeDiscountTiers != null,
@@ -147,6 +145,12 @@ export function opPatchToSaves(prevOp: Operation, patch: Partial<Operation>): Op
   }
   if (patch.name !== undefined)
     out.push({ key: "name", kind: "update", patch: { name: patch.name } });
+  if (patch.costCategory !== undefined)
+    out.push({
+      key: "costCategory",
+      kind: "update",
+      patch: { costCategory: patch.costCategory },
+    });
   if (patch.nonRecurring !== undefined)
     out.push({
       key: "isNonRecurring",
@@ -202,6 +206,7 @@ export function clientOpToAddInput(op: Operation): AddOperationInput {
   return {
     name: op.name,
     operationType: op.type,
+    costCategory: op.costCategory,
     setupMinutes: parseDecimal(setup ?? ""),
     runMinutes: parseDecimal(op.fields.runTime ?? ""),
     isNonRecurring: op.nonRecurring,
@@ -211,6 +216,7 @@ export function clientOpToAddInput(op: Operation): AddOperationInput {
 /** Full DB patch for an op — used when copying so the copy persists its extras. */
 export function clientOpToFullPatch(op: Operation): UpdateOperationInput {
   return {
+    costCategory: op.costCategory,
     markupPct: parseDecimal(op.markupPct),
     setupRateCents: rateCents(op.setupRate),
     runtimeRateCents: rateCents(op.runtimeRate),

@@ -10,72 +10,89 @@
 //     `fields` jsonb) and are intentionally omitted from the persisted defaults.
 //   - The client `seedOperations`/`SHEET_CARD_EXAMPLE` are left untouched for now;
 //     the client converges on these in prompt 3.
-// Pure module — no framework, no DB imports.
+// DB-aware: operation rates are resolved from the org's operation_templates
+// (Kalkulationsvorlagen). No framework imports.
 
-/** Stub default shop rate (€80,00/h) mirroring the client rates source, which
- *  lives in apps/web and can't be imported across the services boundary. */
+import { db, operationTemplates } from "@uptool/db";
+import { eq } from "drizzle-orm";
+
+/** Fallback shop rate (€80,00/h) used only when an org has no matching
+ *  operation_template for a default operation. */
 export const DEFAULT_HOURLY_RATE_CENTS = 8000;
 
 /** A default operation shaped for a part_operations insert (orgId/partId added by
- *  the service). The 0021 override columns are intentionally left unset — a freshly
- *  seeded default is NOT user-touched. */
+ *  the service). setup/runtime rate cents are resolved from the org's
+ *  operation_templates; the 0021 override columns are otherwise left unset — a
+ *  freshly seeded default is NOT user-touched. */
 export interface DefaultOperationRow {
   name: string;
   operationType: string;
+  costCategory: "inside" | "outside" | "purchased";
   setupMinutes: string;
   runMinutes: string;
   hourlyRateCents: number;
+  setupRateCents: number;
+  runtimeRateCents: number;
   isNonRecurring: boolean;
   sortOrder: number;
 }
 
+/** The default operations, before rate resolution. Rates come from the org's
+ *  operation_templates (matched by name, then operation_type). */
+const DEFAULT_OPERATIONS: ReadonlyArray<{
+  name: string;
+  operationType: string;
+  costCategory: "inside" | "outside" | "purchased";
+  setupMinutes: string;
+  runMinutes: string;
+  isNonRecurring: boolean;
+}> = [
+  { name: "Programming", operationType: "programming", costCategory: "inside", setupMinutes: "0", runMinutes: "0", isNonRecurring: true },
+  { name: "CNC Milling", operationType: "cnc-milling", costCategory: "inside", setupMinutes: "120", runMinutes: "60", isNonRecurring: false },
+  { name: "QA / Inspection", operationType: "inspection", costCategory: "inside", setupMinutes: "15", runMinutes: "3", isNonRecurring: false },
+  { name: "Packaging & Shipping", operationType: "pack-and-ship", costCategory: "inside", setupMinutes: "20", runMinutes: "1", isNonRecurring: false },
+];
+
 /**
- * Default operation rows for a freshly-hydrated part. Mirrors the time-based
- * operations from the client `seedOperations`, mapped to DB columns.
- *
- * @param _partArea unused — only the (omitted) rich Finishing default consumed it;
- *   kept for signature parity and future use.
+ * Default operation rows for a freshly-hydrated part. Each operation's hourly rate
+ * is resolved from the org's operation_templates (Kalkulationsvorlagen): match by
+ * exact name first, then by operation_type, else fall back to €80/h with a warning
+ * so the missing template is visible in dev.
  */
-export function buildDefaultOperations(_partArea?: number): DefaultOperationRow[] {
-  const rate = DEFAULT_HOURLY_RATE_CENTS;
-  return [
-    {
-      name: "Programming",
-      operationType: "programming",
-      setupMinutes: "0",
-      runMinutes: "0",
+export async function buildDefaultOperations(orgId: string): Promise<DefaultOperationRow[]> {
+  const templates = await db
+    .select({
+      name: operationTemplates.name,
+      operationType: operationTemplates.operationType,
+      rateCents: operationTemplates.defaultHourlyRateCents,
+    })
+    .from(operationTemplates)
+    .where(eq(operationTemplates.orgId, orgId));
+
+  const byName = new Map(templates.map((t) => [t.name, t.rateCents]));
+  const byType = new Map(templates.map((t) => [t.operationType, t.rateCents]));
+
+  return DEFAULT_OPERATIONS.map((op, i) => {
+    const matched = byName.get(op.name) ?? byType.get(op.operationType);
+    if (matched == null) {
+      console.warn(
+        `[buildDefaultOperations] no operation_template for "${op.name}" (type ${op.operationType}) in org ${orgId} — falling back to €${DEFAULT_HOURLY_RATE_CENTS / 100}/h`,
+      );
+    }
+    const rate = matched ?? DEFAULT_HOURLY_RATE_CENTS;
+    return {
+      name: op.name,
+      operationType: op.operationType,
+      costCategory: op.costCategory,
+      setupMinutes: op.setupMinutes,
+      runMinutes: op.runMinutes,
       hourlyRateCents: rate,
-      isNonRecurring: true,
-      sortOrder: 0,
-    },
-    {
-      name: "CNC Milling",
-      operationType: "cnc-milling",
-      setupMinutes: "120",
-      runMinutes: "60",
-      hourlyRateCents: rate,
-      isNonRecurring: false,
-      sortOrder: 1,
-    },
-    {
-      name: "QA / Inspection",
-      operationType: "inspection",
-      setupMinutes: "15",
-      runMinutes: "3",
-      hourlyRateCents: rate,
-      isNonRecurring: false,
-      sortOrder: 2,
-    },
-    {
-      name: "Packaging & Shipping",
-      operationType: "pack-and-ship",
-      setupMinutes: "20",
-      runMinutes: "1",
-      hourlyRateCents: rate,
-      isNonRecurring: false,
-      sortOrder: 3,
-    },
-  ];
+      setupRateCents: rate,
+      runtimeRateCents: rate,
+      isNonRecurring: op.isNonRecurring,
+      sortOrder: i,
+    };
+  });
 }
 
 /** A default material card shaped for a part_materials insert. */
