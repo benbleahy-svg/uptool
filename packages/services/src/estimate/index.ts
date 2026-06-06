@@ -67,14 +67,40 @@ export const estimateService = {
   async hydratePartEstimate(orgId: string, partId: string): Promise<void> {
     await db.transaction(async (tx) => {
       const [part] = await tx
-        .select({ id: parts.id, hydratedAt: parts.estimateHydratedAt })
+        .select({
+          id: parts.id,
+          hydratedAt: parts.estimateHydratedAt,
+          processType: parts.processType,
+          geometryStatus: parts.geometryStatus,
+          cutLengthMm: parts.geometryCutLengthMm,
+          pierceCount: parts.geometryPierceCount,
+          bendCount: parts.geometryBendCount,
+          bboxXMm: parts.geometryBboxXMm,
+          bboxYMm: parts.geometryBboxYMm,
+          bboxZMm: parts.geometryBboxZMm,
+          volumeMm3: parts.geometryVolumeMm3,
+        })
         .from(parts)
         .where(and(eq(parts.id, partId), eq(parts.orgId, orgId)))
         .for("update");
       if (!part) throw new NotFoundError("Part not found");
       if (part.hydratedAt) return; // already hydrated → no-op
 
-      const ops = await buildDefaultOperations(orgId);
+      // Feed formula times only when geometry is ready; else seed manual zeros.
+      const geometry =
+        part.geometryStatus === "ready"
+          ? {
+              cutLengthMm: part.cutLengthMm,
+              pierceCount: part.pierceCount,
+              bendCount: part.bendCount,
+              bboxXMm: part.bboxXMm,
+              bboxYMm: part.bboxYMm,
+              bboxZMm: part.bboxZMm,
+              volumeMm3: part.volumeMm3,
+            }
+          : null;
+
+      const ops = await buildDefaultOperations(orgId, geometry, part.processType);
       if (ops.length > 0) {
         await tx.insert(partOperations).values(
           ops.map((o) => ({
@@ -90,6 +116,7 @@ export const estimateService = {
             runtimeRateCents: o.runtimeRateCents,
             isNonRecurring: o.isNonRecurring,
             sortOrder: o.sortOrder,
+            timeSource: o.timeSource,
           })),
         );
       }
@@ -112,6 +139,60 @@ export const estimateService = {
         .set({ estimateHydratedAt: new Date() })
         .where(and(eq(parts.id, partId), eq(parts.orgId, orgId)));
     });
+  },
+
+  /**
+   * Backfill formula run-times for a part that was hydrated *before* geometry was
+   * available (estimator opened it while extraction was still in flight). Recomputes
+   * the geometry formulas and updates only the formula-target operations the
+   * estimator hasn't touched (user_touched = false) — manual edits are never
+   * clobbered. Called by the geometry processor once extraction completes.
+   */
+  async rehydrateFormulaTimes(orgId: string, partId: string): Promise<void> {
+    const part = await db.query.parts.findFirst({
+      where: (p, { and: a, eq: e }) => a(e(p.id, partId), e(p.orgId, orgId)),
+      columns: {
+        processType: true,
+        geometryStatus: true,
+        geometryCutLengthMm: true,
+        geometryPierceCount: true,
+        geometryBendCount: true,
+        geometryBboxXMm: true,
+        geometryBboxYMm: true,
+        geometryBboxZMm: true,
+        geometryVolumeMm3: true,
+      },
+    });
+    if (!part || part.geometryStatus !== "ready") return;
+
+    const geometry = {
+      cutLengthMm: part.geometryCutLengthMm,
+      pierceCount: part.geometryPierceCount,
+      bendCount: part.geometryBendCount,
+      bboxXMm: part.geometryBboxXMm,
+      bboxYMm: part.geometryBboxYMm,
+      bboxZMm: part.geometryBboxZMm,
+      volumeMm3: part.geometryVolumeMm3,
+    };
+
+    // Reuse the seeding logic to get the formula run-times for this process type,
+    // then apply them to matching untouched operations (match by name).
+    const defaults = await buildDefaultOperations(orgId, geometry, part.processType);
+    const formulaOps = defaults.filter((o) => o.timeSource === "formula");
+
+    for (const o of formulaOps) {
+      await db
+        .update(partOperations)
+        .set({ runMinutes: o.runMinutes, timeSource: "formula" })
+        .where(
+          and(
+            eq(partOperations.orgId, orgId),
+            eq(partOperations.partId, partId),
+            eq(partOperations.name, o.name),
+            eq(partOperations.userTouched, false),
+          ),
+        );
+    }
   },
 
   // ─── 2.2 Operations CRUD ─────────────────────────────────────────────────────
@@ -140,6 +221,7 @@ export const estimateService = {
         name: data.name,
         operationType: data.operationType ?? "machining",
         costCategory: data.costCategory ?? "inside",
+        timeSource: data.timeSource ?? "manual",
         setupMinutes: String(data.setupMinutes ?? 0),
         runMinutes: String(data.runMinutes ?? 0),
         hourlyRateCents: data.hourlyRateCents ?? DEFAULT_HOURLY_RATE_CENTS,
@@ -166,6 +248,7 @@ export const estimateService = {
     const set: Record<string, unknown> = {};
     if (data.name !== undefined) set.name = data.name;
     if (data.costCategory !== undefined) set.costCategory = data.costCategory;
+    if (data.timeSource !== undefined) set.timeSource = data.timeSource;
     if (data.setupMinutes !== undefined) set.setupMinutes = String(data.setupMinutes);
     if (data.runMinutes !== undefined) set.runMinutes = String(data.runMinutes);
     if (data.isNonRecurring !== undefined) set.isNonRecurring = data.isNonRecurring;

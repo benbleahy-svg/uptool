@@ -61,6 +61,8 @@ export function dbOperationToClient(row: PartOperation): Operation {
     fields,
     nonRecurring: row.isNonRecurring,
     costCategory: row.costCategory as Operation["costCategory"],
+    timeSource: row.timeSource as Operation["timeSource"],
+    userTouched: row.userTouched,
     setupRate: centsToEuro(row.setupRateCents),
     runtimeRate: centsToEuro(row.runtimeRateCents),
     volumeDiscount: row.volumeDiscountTiers != null,
@@ -207,6 +209,7 @@ export function clientOpToAddInput(op: Operation): AddOperationInput {
     name: op.name,
     operationType: op.type,
     costCategory: op.costCategory,
+    timeSource: op.timeSource,
     setupMinutes: parseDecimal(setup ?? ""),
     runMinutes: parseDecimal(op.fields.runTime ?? ""),
     isNonRecurring: op.nonRecurring,
@@ -217,6 +220,7 @@ export function clientOpToAddInput(op: Operation): AddOperationInput {
 export function clientOpToFullPatch(op: Operation): UpdateOperationInput {
   return {
     costCategory: op.costCategory,
+    timeSource: op.timeSource,
     markupPct: parseDecimal(op.markupPct),
     setupRateCents: rateCents(op.setupRate),
     runtimeRateCents: rateCents(op.runtimeRate),

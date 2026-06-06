@@ -61,13 +61,6 @@ const isTempId = (id: string) => id.startsWith("tmp-");
 
 type Units = "cm" | "mm";
 
-const IN_TO_MM = 25.4;
-const IN2_TO_MM2 = 645.16;
-const IN3_TO_MM3 = 16387.064;
-const IN_TO_CM = 2.54;
-const IN2_TO_CM2 = 6.4516;
-const IN3_TO_CM3 = 16.387064;
-
 /** German number format: 7,09 / 180,09 (decimal ","), trailing zeros trimmed. */
 function fmt(value: number): string {
   return value.toLocaleString("de-DE", { maximumFractionDigits: 2 });
@@ -82,15 +75,55 @@ interface AiRow {
   source: SourceType;
 }
 
-function buildRows(part: Part, units: Units): AiRow[] {
-  const u = units;
-  const len = units === "mm" ? part.lengthIn * IN_TO_MM : part.lengthIn * IN_TO_CM;
-  const wid = units === "mm" ? part.widthIn * IN_TO_MM : part.widthIn * IN_TO_CM;
-  const thk = units === "mm" ? part.thicknessIn * IN_TO_MM : part.thicknessIn * IN_TO_CM;
-  const area = units === "mm" ? part.surfaceAreaIn2 * IN2_TO_MM2 : part.surfaceAreaIn2 * IN2_TO_CM2;
-  const vol = units === "mm" ? part.volumeIn3 * IN3_TO_MM3 : part.volumeIn3 * IN3_TO_CM3;
+/** Real extracted geometry passed from the DB part row (mm-native). */
+export interface PartGeometry {
+  status: string | null; // 'pending' | 'processing' | 'ready' | 'failed' | null
+  bboxXMm: number | null;
+  bboxYMm: number | null;
+  bboxZMm: number | null;
+  volumeMm3: number | null;
+  surfaceAreaMm2: number | null;
+  cutLengthMm: number | null;
+  pierceCount: number | null;
+  bendCount: number | null;
+  /** Density of the part's selected material (g/cm³), for the weight calc; null = unknown. */
+  densityGCm3: number | null;
+}
 
-  return [
+function buildRows(part: Part, units: Units, geometry?: PartGeometry): AiRow[] {
+  const u = units;
+  const status = geometry?.status ?? null;
+  // Placeholder for a geometry field given the extraction status.
+  const placeholder =
+    status === "pending" || status === "processing"
+      ? "Wird berechnet…"
+      : status === "failed"
+        ? "⚠ —"
+        : "—";
+
+  // Format a real geometry value (or the status placeholder if not ready/null).
+  const geo = (value: number | null | undefined, render: (v: number) => string): string =>
+    status === "ready" && value != null ? render(value) : placeholder;
+
+  const lenDiv = units === "mm" ? 1 : 10; // mm → cm
+  const areaDiv = units === "mm" ? 1 : 100; // mm² → cm²
+  const volDiv = units === "mm" ? 1 : 1000; // mm³ → cm³
+
+  const volumeCm3 = geometry?.volumeMm3 != null ? geometry.volumeMm3 / 1000 : null;
+  const weight =
+    status === "ready" && volumeCm3 != null && geometry?.densityGCm3 != null
+      ? volumeCm3 * geometry.densityGCm3 // grams
+      : null;
+  const weightStr =
+    weight == null
+      ? status === "ready"
+        ? "—" // ready but no material density selected
+        : placeholder
+      : weight >= 1000
+        ? `${fmt(weight / 1000)} kg`
+        : `${fmt(weight)} g`;
+
+  const rows: AiRow[] = [
     {
       field: "Description",
       value: part.description,
@@ -103,19 +136,44 @@ function buildRows(part: Part, units: Units): AiRow[] {
       verbatim: part.materialVerbatim,
       source: "Technical Drawing",
     },
-    { field: "Length", value: `${fmt(len)} ${u}`, verbatim: "", source: "CAD Model" },
-    { field: "Width", value: `${fmt(wid)} ${u}`, verbatim: "", source: "CAD Model" },
-    { field: "Thickness", value: `${fmt(thk)} ${u}`, verbatim: "", source: "CAD Model" },
-    { field: "Surface Area", value: `${fmt(area)} ${u}²`, verbatim: "", source: "CAD Model" },
-    { field: "Volume", value: `${fmt(vol)} ${u}³`, verbatim: "", source: "CAD Model" },
-    { field: "Weight", value: `${fmt(part.weightLb)} lb`, verbatim: "", source: "Calculated" },
-    {
-      field: "Finish",
-      value: part.finish,
-      verbatim: part.finishVerbatim,
-      source: "Technical Drawing",
-    },
+    { field: "Length", value: geo(geometry?.bboxXMm, (v) => `${fmt(v / lenDiv)} ${u}`), verbatim: "", source: "CAD Model" },
+    { field: "Width", value: geo(geometry?.bboxYMm, (v) => `${fmt(v / lenDiv)} ${u}`), verbatim: "", source: "CAD Model" },
+    { field: "Thickness", value: geo(geometry?.bboxZMm, (v) => `${fmt(v / lenDiv)} ${u}`), verbatim: "", source: "CAD Model" },
+    { field: "Surface Area", value: geo(geometry?.surfaceAreaMm2, (v) => `${fmt(v / areaDiv)} ${u}²`), verbatim: "", source: "CAD Model" },
+    { field: "Volume", value: geo(geometry?.volumeMm3, (v) => `${fmt(v / volDiv)} ${u}³`), verbatim: "", source: "CAD Model" },
+    { field: "Weight", value: weightStr, verbatim: "", source: "Calculated" },
   ];
+
+  // DXF (sheet-metal) extras: cut length / pierces / bends.
+  if (status === "ready" && geometry?.cutLengthMm != null) {
+    rows.push(
+      { field: "Cut Length", value: `${fmt(geometry.cutLengthMm / lenDiv)} ${u}`, verbatim: "", source: "CAD Model" },
+      { field: "Pierces", value: `${geometry.pierceCount ?? 0}`, verbatim: "", source: "CAD Model" },
+      { field: "Bends", value: `${geometry.bendCount ?? 0}`, verbatim: "", source: "CAD Model" },
+    );
+  } else if (status === "ready" && geometry?.cutLengthMm == null) {
+    // Solid (STEP) part: show the stock-removal ratio (>80% ≈ heavy machining).
+    const stock =
+      (geometry?.bboxXMm ?? 0) * (geometry?.bboxYMm ?? 0) * (geometry?.bboxZMm ?? 0);
+    if (stock > 0 && geometry?.volumeMm3 != null) {
+      const removalPct = (Math.max(0, stock - geometry.volumeMm3) / stock) * 100;
+      rows.push({
+        field: "Material Removal",
+        value: `${fmt(removalPct)} %`,
+        verbatim: "",
+        source: "Calculated",
+      });
+    }
+  }
+
+  rows.push({
+    field: "Finish",
+    value: part.finish,
+    verbatim: part.finishVerbatim,
+    source: "Technical Drawing",
+  });
+
+  return rows;
 }
 
 interface CalculatorProps {
@@ -125,6 +183,8 @@ interface CalculatorProps {
   rfqId: string;
   rfqStatus: DerivedRfqStatus;
   partIds: string[];
+  /** Real extracted geometry from the DB part row (null when not extracted yet). */
+  geometryData?: PartGeometry;
   /** Canonical estimate state loaded from the DB (mapped to client models). */
   initialOperations: Operation[];
   initialMaterials: MaterialCard[];
@@ -139,6 +199,7 @@ export function Calculator({
   rfqId,
   rfqStatus,
   partIds,
+  geometryData,
   initialOperations,
   initialMaterials,
   initialNotesExternal,
@@ -425,14 +486,31 @@ export function Calculator({
 
   const workflowName =
     (WORKFLOW_OPTIONS.find((w) => w.id === workflowId) ?? WORKFLOW_OPTIONS[0])?.name ?? "";
-  const rows = buildRows(part, units);
+  const rows = buildRows(part, units, geometryData);
 
   const u = units;
-  const len = units === "mm" ? part.lengthIn * IN_TO_MM : part.lengthIn * IN_TO_CM;
-  const wid = units === "mm" ? part.widthIn * IN_TO_MM : part.widthIn * IN_TO_CM;
-  const thk = units === "mm" ? part.thicknessIn * IN_TO_MM : part.thicknessIn * IN_TO_CM;
-  const area = units === "mm" ? part.surfaceAreaIn2 * IN2_TO_MM2 : part.surfaceAreaIn2 * IN2_TO_CM2;
-  const vol = units === "mm" ? part.volumeIn3 * IN3_TO_MM3 : part.volumeIn3 * IN3_TO_CM3;
+  // Compact-header summary, driven by real geometry (placeholder until ready).
+  const geoReady = geometryData?.status === "ready";
+  const lenDiv = units === "mm" ? 1 : 10;
+  const areaDiv = units === "mm" ? 1 : 100;
+  const dimStr =
+    geoReady && geometryData?.bboxXMm != null
+      ? `${fmt(geometryData.bboxXMm / lenDiv)} × ${fmt((geometryData.bboxYMm ?? 0) / lenDiv)} × ${fmt((geometryData.bboxZMm ?? 0) / lenDiv)}`
+      : "—";
+  const areaStr =
+    geoReady && geometryData?.surfaceAreaMm2 != null
+      ? fmt(geometryData.surfaceAreaMm2 / areaDiv)
+      : "—";
+  const volStr =
+    geoReady && geometryData?.volumeMm3 != null
+      ? fmt(geometryData.volumeMm3 / (units === "mm" ? 1 : 1000))
+      : "—";
+  const weightG =
+    geoReady && geometryData?.volumeMm3 != null && geometryData?.densityGCm3 != null
+      ? (geometryData.volumeMm3 / 1000) * geometryData.densityGCm3
+      : null;
+  const weightStr =
+    weightG == null ? "—" : weightG >= 1000 ? `${fmt(weightG / 1000)} kg` : `${fmt(weightG)} g`;
 
   // Seeded quantities are what the customer requested — only added ones are removable.
   const originalQtyCount = part.quantities.length;
@@ -515,27 +593,22 @@ export function Calculator({
               <div className="mt-1.5 flex flex-wrap items-center gap-x-5 gap-y-1 text-sm text-[hsl(var(--muted-foreground))]">
                 <span className="inline-flex items-center gap-1.5">
                   <Box className="h-3.5 w-3.5" />
-                  <span className="font-semibold text-[hsl(var(--foreground))]">
-                    {fmt(len)} × {fmt(wid)} × {fmt(thk)}
-                  </span>{" "}
-                  {u}
+                  <span className="font-semibold text-[hsl(var(--foreground))]">{dimStr}</span>{" "}
+                  {geoReady ? u : ""}
                 </span>
                 <span className="inline-flex items-center gap-1.5">
                   <Weight className="h-3.5 w-3.5" />
-                  <span className="font-semibold text-[hsl(var(--foreground))]">
-                    {fmt(part.weightLb)}
-                  </span>{" "}
-                  lb
+                  <span className="font-semibold text-[hsl(var(--foreground))]">{weightStr}</span>
                 </span>
                 <span>
                   Area:{" "}
-                  <span className="font-semibold text-[hsl(var(--foreground))]">{fmt(area)}</span>{" "}
-                  {u}²
+                  <span className="font-semibold text-[hsl(var(--foreground))]">{areaStr}</span>{" "}
+                  {geoReady ? `${u}²` : ""}
                 </span>
                 <span>
                   Volume:{" "}
-                  <span className="font-semibold text-[hsl(var(--foreground))]">{fmt(vol)}</span>{" "}
-                  {u}³
+                  <span className="font-semibold text-[hsl(var(--foreground))]">{volStr}</span>{" "}
+                  {geoReady ? `${u}³` : ""}
                 </span>
               </div>
 

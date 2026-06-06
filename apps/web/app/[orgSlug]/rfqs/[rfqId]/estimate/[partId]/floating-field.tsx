@@ -26,6 +26,10 @@ interface FloatingFieldProps extends BaseProps {
   placeholder?: string;
   /** Render a filled value in blue to signal a user-entered value (operations). */
   highlightFilled?: boolean;
+  /** Render the value in amber + a "⚡ Berechnet" badge: a formula-suggested value
+   *  the estimator hasn't confirmed yet. Takes precedence over highlightFilled. */
+  suggested?: boolean;
+  suggestedLabel?: string;
 }
 
 export function FloatingField({
@@ -41,20 +45,28 @@ export function FloatingField({
   inputMode,
   placeholder,
   highlightFilled,
+  suggested,
+  suggestedLabel,
   className,
 }: FloatingFieldProps) {
   const invalid = !!required && value.trim() === "";
-  const filledBlue = highlightFilled && value.trim() !== "";
+  const filledBlue = !suggested && highlightFilled && value.trim() !== "";
 
   return (
     <div
       className={cn(
         "relative rounded-md border bg-gray-50 px-2.5 pb-1.5 pt-3.5",
         invalid ? "border-red-400 ring-1 ring-red-300" : "border-gray-200",
+        suggested && "border-amber-300 bg-amber-50",
         className,
       )}
     >
       <FieldLabel invalid={invalid}>{label}</FieldLabel>
+      {suggested && (
+        <span className="pointer-events-none absolute -top-2 right-1 flex items-center gap-0.5 rounded bg-amber-100 px-1 text-[10px] font-medium text-amber-700">
+          ⚡ {suggestedLabel ?? "Berechnet"}
+        </span>
+      )}
       <div className="flex items-center gap-1">
         {prefix && <span className="text-sm text-gray-500">{prefix}</span>}
         <input
@@ -69,6 +81,7 @@ export function FloatingField({
             align === "right" && "text-right",
             readOnly && "text-gray-500",
             filledBlue && "font-medium text-blue-600",
+            suggested && "font-medium text-amber-600",
           )}
         />
         {suffix && <span className="whitespace-nowrap text-sm text-gray-500">{suffix}</span>}

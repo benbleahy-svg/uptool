@@ -22,6 +22,7 @@ function op(over: Partial<PartOperation>): PartOperation {
     hourlyRateCents: 8000,
     isNonRecurring: false,
     costCategory: "inside",
+    timeSource: "manual",
     sortOrder: 0,
     unitPriceOverrideCents: null,
     markupPct: null,

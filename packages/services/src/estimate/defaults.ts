@@ -1,29 +1,31 @@
 // Canonical DB-row-shaped defaults seeded into part_operations / part_materials
 // when a part is first opened in the calculator (see estimateService.hydratePartEstimate).
 //
-// These mirror the values the client currently seeds (apps/web operations-section
-// `seedOperations` + materialCost `SHEET_CARD_EXAMPLE`) but shaped for the DB
-// columns rather than the richer client model. Per ADR 0019:
-//   - Only the TIME-BASED default operations are persisted (Programming, CNC
-//     Milling, QA/Inspection, Packaging & Shipping). The client's rich-field ops
-//     (Laser Cutting, Finishing) have no column home (part_operations has no
-//     `fields` jsonb) and are intentionally omitted from the persisted defaults.
-//   - The client `seedOperations`/`SHEET_CARD_EXAMPLE` are left untouched for now;
-//     the client converges on these in prompt 3.
-// DB-aware: operation rates are resolved from the org's operation_templates
-// (Kalkulationsvorlagen). No framework imports.
+// The operation set is processType-aware (Sheet Metal vs CNC Milling/Turning vs
+// generic), and when extracted geometry is available the relevant run-times are
+// pre-populated from the geometry formulas and tagged time_source = 'formula'
+// (shown amber in the calculator until the estimator confirms them). Rates resolve
+// from the org's operation_templates (Kalkulationsvorlagen). No framework imports.
 
 import { db, operationTemplates } from "@uptool/db";
+import {
+  type SheetMetalGeometry,
+  type SolidGeometry,
+  mrrForMaterial,
+  suggestCncMillingTimes,
+  suggestSheetMetalTimes,
+} from "@uptool/shared";
 import { eq } from "drizzle-orm";
 
 /** Fallback shop rate (€80,00/h) used only when an org has no matching
  *  operation_template for a default operation. */
 export const DEFAULT_HOURLY_RATE_CENTS = 8000;
 
+export type TimeSource = "manual" | "formula" | "template";
+
 /** A default operation shaped for a part_operations insert (orgId/partId added by
- *  the service). setup/runtime rate cents are resolved from the org's
- *  operation_templates; the 0021 override columns are otherwise left unset — a
- *  freshly seeded default is NOT user-touched. */
+ *  the service). setup/runtime rate cents resolve from operation_templates; the
+ *  0021 override columns are left unset — a freshly seeded default isn't user-touched. */
 export interface DefaultOperationRow {
   name: string;
   operationType: string;
@@ -35,31 +37,79 @@ export interface DefaultOperationRow {
   runtimeRateCents: number;
   isNonRecurring: boolean;
   sortOrder: number;
+  timeSource: TimeSource;
 }
 
-/** The default operations, before rate resolution. Rates come from the org's
- *  operation_templates (matched by name, then operation_type). */
-const DEFAULT_OPERATIONS: ReadonlyArray<{
+/** The part's extracted geometry columns relevant to the time formulas (nullable). */
+export interface GeometryInput extends SheetMetalGeometry, SolidGeometry {}
+
+/** Which formula (if any) drives an operation's run-time. */
+type FormulaTarget = "laser" | "bending" | "cnc" | undefined;
+
+interface BaseOp {
   name: string;
   operationType: string;
   costCategory: "inside" | "outside" | "purchased";
   setupMinutes: string;
   runMinutes: string;
   isNonRecurring: boolean;
-}> = [
-  { name: "Programming", operationType: "programming", costCategory: "inside", setupMinutes: "0", runMinutes: "0", isNonRecurring: true },
-  { name: "CNC Milling", operationType: "cnc-milling", costCategory: "inside", setupMinutes: "120", runMinutes: "60", isNonRecurring: false },
-  { name: "QA / Inspection", operationType: "inspection", costCategory: "inside", setupMinutes: "15", runMinutes: "3", isNonRecurring: false },
-  { name: "Packaging & Shipping", operationType: "pack-and-ship", costCategory: "inside", setupMinutes: "20", runMinutes: "1", isNonRecurring: false },
-];
+  formula?: FormulaTarget;
+}
+
+const PROGRAMMING: BaseOp = { name: "Programming", operationType: "programming", costCategory: "inside", setupMinutes: "0", runMinutes: "0", isNonRecurring: true };
+const QA: BaseOp = { name: "QA / Inspection", operationType: "inspection", costCategory: "inside", setupMinutes: "15", runMinutes: "3", isNonRecurring: false };
+const PACKAGING: BaseOp = { name: "Packaging & Shipping", operationType: "pack-and-ship", costCategory: "inside", setupMinutes: "20", runMinutes: "1", isNonRecurring: false };
+
+/** The default operation set for a part's process type. Run-times on formula ops
+ *  start at 0 and are filled from geometry when available (else stay 0 / manual). */
+function opSetFor(processType?: string | null): BaseOp[] {
+  const pt = processType ?? "";
+  if (pt === "Sheet Metal") {
+    return [
+      { name: "Laser Cutting", operationType: "laser-cutting", costCategory: "inside", setupMinutes: "15", runMinutes: "0", isNonRecurring: false, formula: "laser" },
+      { name: "Bending", operationType: "bending", costCategory: "inside", setupMinutes: "20", runMinutes: "0", isNonRecurring: false, formula: "bending" },
+      QA,
+      PACKAGING,
+    ];
+  }
+  if (pt.startsWith("CNC Milling")) {
+    return [
+      PROGRAMMING,
+      { name: "CNC Milling", operationType: "cnc-milling", costCategory: "inside", setupMinutes: "120", runMinutes: "0", isNonRecurring: false, formula: "cnc" },
+      QA,
+      PACKAGING,
+    ];
+  }
+  if (pt.startsWith("CNC Turning")) {
+    return [
+      PROGRAMMING,
+      { name: "Turning", operationType: "generic", costCategory: "inside", setupMinutes: "90", runMinutes: "0", isNonRecurring: false, formula: "cnc" },
+      QA,
+      PACKAGING,
+    ];
+  }
+  return [
+    PROGRAMMING,
+    { name: "Machining", operationType: "generic", costCategory: "inside", setupMinutes: "0", runMinutes: "0", isNonRecurring: false },
+    QA,
+    PACKAGING,
+  ];
+}
+
+/** Round minutes to 2 decimals, as a numeric-column string. */
+const min2 = (n: number): string => (Math.round(n * 100) / 100).toString();
 
 /**
- * Default operation rows for a freshly-hydrated part. Each operation's hourly rate
- * is resolved from the org's operation_templates (Kalkulationsvorlagen): match by
- * exact name first, then by operation_type, else fall back to €80/h with a warning
- * so the missing template is visible in dev.
+ * Default operation rows for a freshly-hydrated part. The set is chosen by
+ * processType; when geometry is provided, formula-target run-times are filled and
+ * tagged time_source = 'formula'. Each op's hourly rate resolves from the org's
+ * operation_templates (match by name, then operation_type, else €80/h + warning).
  */
-export async function buildDefaultOperations(orgId: string): Promise<DefaultOperationRow[]> {
+export async function buildDefaultOperations(
+  orgId: string,
+  geometry?: GeometryInput | null,
+  processType?: string | null,
+): Promise<DefaultOperationRow[]> {
   const templates = await db
     .select({
       name: operationTemplates.name,
@@ -72,7 +122,11 @@ export async function buildDefaultOperations(orgId: string): Promise<DefaultOper
   const byName = new Map(templates.map((t) => [t.name, t.rateCents]));
   const byType = new Map(templates.map((t) => [t.operationType, t.rateCents]));
 
-  return DEFAULT_OPERATIONS.map((op, i) => {
+  // Formula times computed once (material category unknown at hydration → default MRR).
+  const sheet = geometry ? suggestSheetMetalTimes(geometry) : null;
+  const cnc = geometry ? suggestCncMillingTimes(geometry, mrrForMaterial(undefined)) : null;
+
+  return opSetFor(processType).map((op, i) => {
     const matched = byName.get(op.name) ?? byType.get(op.operationType);
     if (matched == null) {
       console.warn(
@@ -80,17 +134,34 @@ export async function buildDefaultOperations(orgId: string): Promise<DefaultOper
       );
     }
     const rate = matched ?? DEFAULT_HOURLY_RATE_CENTS;
+
+    let runMinutes = op.runMinutes;
+    let timeSource: TimeSource = "manual";
+    if (geometry) {
+      if (op.formula === "laser" && sheet) {
+        runMinutes = min2(sheet.laserRunMinutes);
+        timeSource = "formula";
+      } else if (op.formula === "bending" && sheet && (geometry.bendCount ?? 0) > 0) {
+        runMinutes = min2(sheet.bendingRunMinutes);
+        timeSource = "formula";
+      } else if (op.formula === "cnc" && cnc && cnc.runMinutes > 0) {
+        runMinutes = min2(cnc.runMinutes);
+        timeSource = "formula";
+      }
+    }
+
     return {
       name: op.name,
       operationType: op.operationType,
       costCategory: op.costCategory,
       setupMinutes: op.setupMinutes,
-      runMinutes: op.runMinutes,
+      runMinutes,
       hourlyRateCents: rate,
       setupRateCents: rate,
       runtimeRateCents: rate,
       isNonRecurring: op.isNonRecurring,
       sortOrder: i,
+      timeSource,
     };
   });
 }

@@ -1,0 +1,2 @@
+ALTER TABLE "part_operations" ADD COLUMN "time_source" text DEFAULT 'manual' NOT NULL;--> statement-breakpoint
+ALTER TABLE "part_operations" ADD CONSTRAINT "part_operations_time_source_check" CHECK ("part_operations"."time_source" IN ('manual', 'formula', 'template'));

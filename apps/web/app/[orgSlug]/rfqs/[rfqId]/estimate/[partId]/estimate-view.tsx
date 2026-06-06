@@ -3,7 +3,7 @@
 import type { MaterialCard } from "@/lib/quoting/materialCost";
 import type { Operation } from "@/lib/quoting/operationCost";
 import type { DerivedRfqStatus } from "@/lib/rfq-status";
-import { Calculator } from "./calculator";
+import { Calculator, type PartGeometry } from "./calculator";
 import { FileViewerPane } from "./file-viewer-pane";
 import type { Part } from "./mocks/mockPart";
 import { SplitPane } from "./split-pane";
@@ -15,6 +15,7 @@ interface Props {
   rfqId: string;
   rfqStatus: DerivedRfqStatus;
   partIds: string[];
+  geometryData?: PartGeometry;
   initialOperations: Operation[];
   initialMaterials: MaterialCard[];
   initialNotesExternal: string;
@@ -28,6 +29,7 @@ export function EstimateView({
   rfqId,
   rfqStatus,
   partIds,
+  geometryData,
   initialOperations,
   initialMaterials,
   initialNotesExternal,
@@ -43,6 +45,7 @@ export function EstimateView({
           rfqId={rfqId}
           rfqStatus={rfqStatus}
           partIds={partIds}
+          geometryData={geometryData}
           initialOperations={initialOperations}
           initialMaterials={initialMaterials}
           initialNotesExternal={initialNotesExternal}

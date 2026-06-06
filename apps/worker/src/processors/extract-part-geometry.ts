@@ -1,5 +1,5 @@
 import { extname } from "node:path";
-import { type GeometryResult, partService, storageService } from "@uptool/services";
+import { type GeometryResult, estimateService, partService, storageService } from "@uptool/services";
 import type { Job } from "bullmq";
 import { extractDxfGeometry } from "../geometry/extract-dxf";
 import { extractStepGeometry } from "../geometry/extract-step";
@@ -34,6 +34,13 @@ export async function extractPartGeometryProcessor(
 
     await partService.markGeometryReady(orgId, partId, result);
     log.info({ result }, "Geometry extracted");
+
+    // If the estimator opened this part before extraction finished, its operations
+    // were seeded without formula times. Backfill the untouched formula ops now
+    // (no-op if not yet hydrated or the estimator has already edited them).
+    await estimateService
+      .rehydrateFormulaTimes(orgId, partId)
+      .catch((err) => log.warn({ err }, "rehydrateFormulaTimes failed"));
   } catch (err) {
     // Isolated to this part — mark retryable and surface for the failed-job log.
     log.error({ err }, "Geometry extraction failed");

@@ -597,6 +597,10 @@ export const partOperations = pgTable(
     // Flips true the moment the user edits anything on this row; re-hydration
     // uses it to avoid overwriting user edits with re-seeded defaults.
     userTouched: boolean("user_touched").notNull().default(false),
+    // Where the time values came from: 'manual' (estimator-entered, default),
+    // 'formula' (geometry-derived suggestion, shown amber until confirmed), or
+    // 'template' (from an operation_template). Drives the calculator's amber/blue UI.
+    timeSource: text("time_source").notNull().default("manual"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
@@ -608,6 +612,10 @@ export const partOperations = pgTable(
     check(
       "part_operations_cost_category_check",
       sql`${t.costCategory} IN ('inside', 'outside', 'purchased')`,
+    ),
+    check(
+      "part_operations_time_source_check",
+      sql`${t.timeSource} IN ('manual', 'formula', 'template')`,
     ),
   ],
 );

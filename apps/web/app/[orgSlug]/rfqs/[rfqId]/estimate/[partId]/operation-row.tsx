@@ -81,8 +81,13 @@ export function OperationRow({ op, quantities, onChange, onDelete, onCopy }: Pro
   // expanded grid; legacy ops keep fields + prices on the collapsed row.
   const showHeaderPrices = !timeBased || op.collapsed;
 
-  const setField = (key: string, value: string) =>
-    onChange({ fields: { ...op.fields, [key]: value } });
+  const setField = (key: string, value: string) => {
+    const patch: Partial<Operation> = { fields: { ...op.fields, [key]: value } };
+    // Editing a formula-suggested value confirms it: flip to user-touched so the
+    // amber field turns blue immediately (the server also sets user_touched=true).
+    if (op.timeSource === "formula" && !op.userTouched) patch.userTouched = true;
+    onChange(patch);
+  };
 
   return (
     <div
@@ -123,6 +128,13 @@ export function OperationRow({ op, quantities, onChange, onDelete, onCopy }: Pro
                     value={op.fields[field.key] ?? ""}
                     onChange={(v) => setField(field.key, v)}
                     highlightFilled
+                    // The run-time field is amber while it's an unconfirmed formula
+                    // suggestion; any edit flips user_touched → blue (see persistence).
+                    suggested={
+                      field.key === "runTime" &&
+                      op.timeSource === "formula" &&
+                      !op.userTouched
+                    }
                   />
                 ))}
               </div>
@@ -278,11 +290,13 @@ function OpField({
   value,
   onChange,
   highlightFilled,
+  suggested,
 }: {
   def: OpFieldDef;
   value: string;
   onChange: (value: string) => void;
   highlightFilled?: boolean;
+  suggested?: boolean;
 }) {
   if (def.kind === "dropdown") {
     return (
@@ -310,6 +324,7 @@ function OpField({
       onClear={def.clearable ? () => onChange("") : undefined}
       inputMode={def.kind === "number" ? "decimal" : undefined}
       highlightFilled={highlightFilled}
+      suggested={suggested}
       className={def.width}
     />
   );

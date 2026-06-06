@@ -70,6 +70,10 @@ export const DEFAULT_VOLUME_TIERS: VolumeTier[] = [
   { qty: "1000", discountPct: "15" },
 ];
 
+/** Where an operation's time values came from — drives the calculator's amber
+ *  ('formula', suggested) vs blue ('manual'/confirmed) treatment. */
+export type TimeSource = "manual" | "formula" | "template";
+
 export interface Operation {
   id: string;
   type: OperationType;
@@ -79,6 +83,11 @@ export interface Operation {
   nonRecurring: boolean;
   /** Cost bucket for the breakdown; persisted as part_operations.cost_category. */
   costCategory: CostCategory;
+  /** Provenance of the time values (part_operations.time_source). */
+  timeSource: TimeSource;
+  /** Whether the estimator has edited this row (part_operations.user_touched).
+   *  A formula time is amber until userTouched, then blue (confirmed/changed). */
+  userTouched: boolean;
   /** Per-operation €/h rates (persisted as setup_rate_cents / runtime_rate_cents).
    *  Empty = no rate set; the cost engine falls back to DEFAULT_HOURLY_RATE_EUR. */
   setupRate: string;
@@ -109,7 +118,7 @@ const TIME_MODEL: Record<OperationType, { setupKey?: string; runKey?: string } |
   deburr: { setupKey: "setupTime", runKey: "runTime" },
   bending: { setupKey: "setupTime", runKey: "runTime" },
   generic: { setupKey: "setupTime", runKey: "runTime" },
-  "laser-cutting": null,
+  "laser-cutting": { setupKey: "setupTime", runKey: "runTime" },
   finishing: null,
 };
 
@@ -142,11 +151,6 @@ const runTime: OpFieldDef = {
   align: "right",
   width: "w-28",
 };
-
-export const LASER_TYPES = [
-  { id: "fiber", label: "Fiber" },
-  { id: "co2", label: "CO₂" },
-] as const;
 
 export const FINISHING_PROCESSES = [
   { id: "anodize", label: "Anodize" },
@@ -181,86 +185,9 @@ export const OPERATION_CATALOGUE: Record<OperationType, OpTypeDef> = {
     name: "Laser Cutting",
     nonRecurring: false,
     costCategory: "inside",
-    fields: [
-      {
-        key: "material",
-        label: "Material",
-        kind: "text",
-        required: true,
-        clearable: true,
-        width: "w-40",
-      },
-      {
-        key: "thickness",
-        label: "Thickness",
-        kind: "number",
-        unit: "cm",
-        required: true,
-        align: "right",
-        width: "w-24",
-      },
-      {
-        key: "cutSpeed",
-        label: "Cut speed",
-        kind: "number",
-        unit: "cm/min",
-        required: true,
-        align: "right",
-        width: "w-28",
-      },
-      {
-        key: "pierceTime",
-        label: "Pierce time",
-        kind: "number",
-        unit: "sec",
-        required: true,
-        align: "right",
-        width: "w-28",
-      },
-      {
-        key: "cutLength",
-        label: "Cut length",
-        kind: "number",
-        unit: "cm",
-        required: true,
-        align: "right",
-        width: "w-28",
-      },
-      {
-        key: "pierces",
-        label: "Pierces",
-        kind: "number",
-        required: true,
-        align: "right",
-        width: "w-24",
-      },
-      {
-        key: "setupTime",
-        label: "Setup time",
-        kind: "number",
-        unit: "min",
-        required: true,
-        align: "right",
-        width: "w-28",
-      },
-      {
-        key: "cycleTime",
-        label: "Cycle time",
-        kind: "number",
-        unit: "min",
-        required: true,
-        align: "right",
-        width: "w-28",
-      },
-      {
-        key: "laserType",
-        label: "Laser Type",
-        kind: "dropdown",
-        required: true,
-        width: "w-28",
-        options: LASER_TYPES,
-      },
-    ],
+    // Time-based: cost = run_minutes × rate. The geometry formula derives run time
+    // from cut length + pierce count; the bespoke cut-speed model is retired.
+    fields: [setupTime, runTime],
   },
   deburr: {
     type: "deburr",
@@ -379,6 +306,9 @@ export function createOperation(
     fields,
     nonRecurring: def.nonRecurring,
     costCategory: def.costCategory,
+    // A freshly user-added op is manual and untouched until the first save.
+    timeSource: "manual",
+    userTouched: false,
     setupRate: "",
     runtimeRate: "",
     volumeDiscount: false,
@@ -398,10 +328,7 @@ function timeFor(op: Operation): { setupMin: number; runMin: number } {
       runMin: model.runKey ? num(op.fields[model.runKey]) : 0,
     };
   }
-  // Legacy ops: laser maps cycle time to run; others default to setup/run keys.
-  if (op.type === "laser-cutting") {
-    return { setupMin: num(op.fields.setupTime), runMin: num(op.fields.cycleTime) };
-  }
+  // Legacy non-time ops (finishing) default to setup/run keys (unused for cost).
   return { setupMin: num(op.fields.setupTime), runMin: num(op.fields.runTime) };
 }
 

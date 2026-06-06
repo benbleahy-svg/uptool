@@ -36,9 +36,11 @@ describe("hydratePartEstimate", () => {
     const mats1 = await estimateService.listPartMaterials(orgId, partId);
 
     expect(ops1).toHaveLength(4);
+    // The fixture part has no process_type → the generic op set (Machining, not a
+    // process-specific op). Sheet Metal / CNC sets are exercised by the formula tests.
     expect(ops1.map((o) => o.name)).toEqual([
       "Programming",
-      "CNC Milling",
+      "Machining",
       "QA / Inspection",
       "Packaging & Shipping",
     ]);

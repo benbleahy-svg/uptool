@@ -4,6 +4,7 @@ import { resolveRfq } from "@/lib/resolve-rfq";
 import { type DerivedRfqStatus, getRfqStatus } from "@/lib/rfq-status";
 import { db } from "@uptool/db";
 import { estimateService } from "@uptool/services";
+import type { PartGeometry } from "./calculator";
 import { EstimateView } from "./estimate-view";
 import { type Part, getMockPart } from "./mocks/mockPart";
 import { dbMaterialToClient, dbOperationToClient } from "./persistence";
@@ -109,6 +110,35 @@ export default async function EstimatePartPage({ params }: Props) {
     finish: dbPart.finish ?? mockHeader?.finish ?? "",
   };
 
+  // Resolve the density of the part's selected library material (first card linked
+  // to an org_materials row) for the header weight calc; null if none is linked.
+  let densityGCm3: number | null = null;
+  const linkedMaterial = await db.query.partMaterials.findFirst({
+    where: (m, { and, eq, isNotNull }) =>
+      and(eq(m.partId, partId), eq(m.orgId, org.id), isNotNull(m.materialId)),
+    columns: { materialId: true },
+  });
+  if (linkedMaterial?.materialId) {
+    const om = await db.query.orgMaterials.findFirst({
+      where: (o, { and, eq }) => and(eq(o.id, linkedMaterial.materialId as string), eq(o.orgId, org.id)),
+      columns: { densityGCm3: true },
+    });
+    densityGCm3 = om?.densityGCm3 != null ? Number(om.densityGCm3) : null;
+  }
+
+  const geometryData: PartGeometry = {
+    status: dbPart.geometryStatus,
+    bboxXMm: dbPart.geometryBboxXMm,
+    bboxYMm: dbPart.geometryBboxYMm,
+    bboxZMm: dbPart.geometryBboxZMm,
+    volumeMm3: dbPart.geometryVolumeMm3,
+    surfaceAreaMm2: dbPart.geometrySurfaceAreaMm2,
+    cutLengthMm: dbPart.geometryCutLengthMm,
+    pierceCount: dbPart.geometryPierceCount,
+    bendCount: dbPart.geometryBendCount,
+    densityGCm3,
+  };
+
   return (
     <EstimateView
       // Remount with fresh state after a Reset (which nulls + re-stamps hydratedAt).
@@ -119,6 +149,7 @@ export default async function EstimatePartPage({ params }: Props) {
       rfqId={rfq.id}
       rfqStatus={rfqStatus}
       partIds={partIds}
+      geometryData={geometryData}
       initialOperations={operations}
       initialMaterials={materials}
       initialNotesExternal={notesExternal}
