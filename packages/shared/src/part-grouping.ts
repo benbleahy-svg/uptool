@@ -1,6 +1,6 @@
 // Pure helpers for auto-creating parts from ingested RFQ attachments. No DB / no
-// framework deps so they can be unit-tested in isolation. The services layer
-// queries attachment rows and feeds them to groupAttachmentsIntoParts().
+// framework / no API calls — the Claude pairing (for multi-CAD RFQs) happens in the
+// services layer and its parsed result is passed into buildPartGroups() as data.
 
 import { attachmentCategory } from "./constants";
 
@@ -18,6 +18,13 @@ export interface PartGroup {
   attachmentIds: string[];
 }
 
+/** Claude's filename pairing for a multi-CAD RFQ. Each part is one CAD + its
+ *  drawing PDFs; PDFs Claude couldn't confidently place go in unmatchedPdfs. */
+export interface PairingResult {
+  parts: Array<{ cad: string; pdfs: string[] }>;
+  unmatchedPdfs: string[];
+}
+
 /** Extension including the dot, lower-cased (e.g. ".step"). */
 function extOf(filename: string): string {
   const dot = filename.lastIndexOf(".");
@@ -29,6 +36,9 @@ function stemOf(filename: string): string {
   const dot = filename.lastIndexOf(".");
   return dot === -1 ? filename : filename.slice(0, dot);
 }
+
+const isCad = (filename: string): boolean => attachmentCategory(filename) === "cad";
+const isDrawing = (filename: string): boolean => attachmentCategory(filename) === "drawing";
 
 /**
  * Title-case a filename stem for display: separators (_ and -) become spaces,
@@ -43,25 +53,6 @@ export function nameFromStem(stem: string): string {
     .split(" ")
     .map((w) => (w ? w.charAt(0).toUpperCase() + w.slice(1) : w))
     .join(" ");
-}
-
-/**
- * Normalised matching key for pairing a drawing PDF with its CAD file: lower-cased,
- * separators removed, then common drawing/revision suffixes stripped from the end
- * (_rev_a, _reva, _v1, _drawing, _print …). "5216488_VentPlate" and
- * "5216488_VentPlate" match; "bracket_rev_a" and "bracket_drawing" both reduce to
- * "bracket".
- */
-export function normalizeStem(stem: string): string {
-  let s = stem.toLowerCase().replace(/[\s_-]+/g, "");
-  // Strip trailing suffixes repeatedly (handles e.g. "..._rev_a_drawing").
-  let changed = true;
-  while (changed) {
-    const next = s.replace(/(rev[a-z0-9]*|v\d+|drawing|print)$/, "");
-    changed = next !== s && next.length > 0;
-    s = next.length > 0 ? next : s;
-  }
-  return s;
 }
 
 /** process_type from the primary file extension. 2D formats → Sheet Metal,
@@ -84,42 +75,118 @@ export function processTypeForExt(ext: string): string | null {
 }
 
 /**
- * Group ingested attachments into parts by filename stem.
- *  - Each CAD file (.step/.stp/.iges/.dxf/.dwg/…) becomes a part (primary file).
- *  - A drawing PDF attaches to the CAD part with the same normalised stem; a PDF
- *    with no CAD match becomes its own part (process_type null).
- *  - Order: CAD parts in file order, then any lone-PDF parts.
+ * Whether Claude pairing is worth the API call. With 0 or 1 CAD file there is no
+ * ambiguity — a lone CAD owns every PDF — so the fast path handles it. With ≥2 CAD
+ * files a PDF could belong to any of them, which is exactly what stem-matching got
+ * wrong (model and drawing carry different document numbers), so we ask Claude.
  */
-export function groupAttachmentsIntoParts(files: AttachmentRef[]): PartGroup[] {
-  const groups: PartGroup[] = [];
-  const stemToIndex = new Map<string, number>();
+export function needsAiPairing(files: AttachmentRef[]): boolean {
+  return files.filter((f) => isCad(f.filename)).length >= 2;
+}
 
-  // Pass 1: one group per CAD file.
-  for (const f of files) {
-    if (attachmentCategory(f.filename) !== "cad") continue;
-    const stem = stemOf(f.filename);
-    const group: PartGroup = {
-      name: nameFromStem(stem),
-      processType: processTypeForExt(extOf(f.filename)),
-      attachmentIds: [f.id],
-    };
-    const index = groups.push(group) - 1;
-    const key = normalizeStem(stem);
-    if (!stemToIndex.has(key)) stemToIndex.set(key, index);
+function cadGroup(file: AttachmentRef, extraPdfIds: string[] = []): PartGroup {
+  return {
+    name: nameFromStem(stemOf(file.filename)),
+    processType: processTypeForExt(extOf(file.filename)),
+    attachmentIds: [file.id, ...extraPdfIds],
+  };
+}
+
+/**
+ * Build parts from ingested attachments.
+ *
+ * Fast path (`pairing` omitted/null): used for ≤1 CAD, and as the fallback when a
+ * Claude pairing call failed.
+ *   - 1 CAD: one part, every PDF linked to it.
+ *   - 0 CAD: each PDF becomes its own part (a drawing for a manually-added part).
+ *   - ≥2 CAD with no pairing (fallback): one part per CAD, PDFs left unlinked.
+ *
+ * Slow path (`pairing` provided): build from Claude's grouping — one part per CAD
+ * with its paired PDFs. `unmatchedPdfs` (and any file Claude omitted) stay unlinked.
+ * Defensive: any CAD Claude failed to place still gets its own part, so a CAD is
+ * never silently dropped.
+ */
+export function buildPartGroups(
+  files: AttachmentRef[],
+  pairing?: PairingResult | null,
+): PartGroup[] {
+  const cads = files.filter((f) => isCad(f.filename));
+  const pdfs = files.filter((f) => isDrawing(f.filename));
+
+  if (!pairing) {
+    if (cads.length === 0) {
+      return pdfs.map((p) => ({
+        name: nameFromStem(stemOf(p.filename)),
+        processType: null,
+        attachmentIds: [p.id],
+      }));
+    }
+    if (cads.length === 1) {
+      // biome-ignore lint/style/noNonNullAssertion: length checked above
+      return [cadGroup(cads[0]!, pdfs.map((p) => p.id))];
+    }
+    // ≥2 CAD, no pairing → fallback: one part per CAD, PDFs unlinked.
+    return cads.map((c) => cadGroup(c));
   }
 
-  // Pass 2: attach drawing PDFs to a matching CAD part, else make a lone part.
-  for (const f of files) {
-    if (attachmentCategory(f.filename) !== "drawing") continue;
-    const stem = stemOf(f.filename);
-    const match = stemToIndex.get(normalizeStem(stem));
-    const matchedGroup = match !== undefined ? groups[match] : undefined;
-    if (matchedGroup) {
-      matchedGroup.attachmentIds.push(f.id);
-    } else {
-      groups.push({ name: nameFromStem(stem), processType: null, attachmentIds: [f.id] });
-    }
+  // Slow path: resolve Claude's filenames back to attachment ids (exact, then
+  // case-insensitive). Skip a part whose CAD we can't resolve.
+  const byName = new Map(files.map((f) => [f.filename, f.id]));
+  const byLower = new Map(files.map((f) => [f.filename.toLowerCase(), f.id]));
+  const fileById = new Map(files.map((f) => [f.id, f]));
+  const resolve = (fn: string): string | undefined =>
+    byName.get(fn) ?? byLower.get(fn.toLowerCase());
+
+  const groups: PartGroup[] = [];
+  const usedCadIds = new Set<string>();
+
+  for (const part of pairing.parts) {
+    const cadId = resolve(part.cad);
+    const cadFile = cadId ? fileById.get(cadId) : undefined;
+    if (!cadFile || !isCad(cadFile.filename)) continue;
+    const pdfIds = (part.pdfs ?? [])
+      .map(resolve)
+      .filter((id): id is string => id !== undefined);
+    groups.push(cadGroup(cadFile, pdfIds));
+    usedCadIds.add(cadFile.id);
+  }
+
+  // Safety net: any CAD Claude omitted still gets its own part.
+  for (const c of cads) {
+    if (!usedCadIds.has(c.id)) groups.push(cadGroup(c));
   }
 
   return groups;
+}
+
+/**
+ * Parse Claude's pairing response into a PairingResult. Tolerates ```json fences
+ * and surrounding prose by extracting the outermost JSON object. Throws on invalid
+ * JSON or shape so the caller can fall back to the fast path.
+ */
+export function parsePairingResponse(raw: string): PairingResult {
+  const start = raw.indexOf("{");
+  const end = raw.lastIndexOf("}");
+  if (start === -1 || end === -1 || end < start) {
+    throw new Error("No JSON object in pairing response");
+  }
+  const parsed = JSON.parse(raw.slice(start, end + 1)) as unknown;
+  if (typeof parsed !== "object" || parsed === null) {
+    throw new Error("Pairing response is not an object");
+  }
+  const obj = parsed as { parts?: unknown; unmatched_pdfs?: unknown };
+  if (!Array.isArray(obj.parts)) throw new Error("Pairing response missing parts[]");
+
+  const parts = obj.parts.map((p) => {
+    if (typeof p !== "object" || p === null) throw new Error("Invalid part entry");
+    const { cad, pdfs } = p as { cad?: unknown; pdfs?: unknown };
+    if (typeof cad !== "string") throw new Error("Part missing cad filename");
+    const pdfList = Array.isArray(pdfs) ? pdfs.filter((x): x is string => typeof x === "string") : [];
+    return { cad, pdfs: pdfList };
+  });
+  const unmatchedPdfs = Array.isArray(obj.unmatched_pdfs)
+    ? obj.unmatched_pdfs.filter((x): x is string => typeof x === "string")
+    : [];
+
+  return { parts, unmatchedPdfs };
 }
